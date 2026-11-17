@@ -86,6 +86,18 @@ function buildMarkers() {
 function refreshPins() { SHOPS.forEach(s => MARKERS[s.id]?.setIcon(pinIcon(s))); cluster.refreshClusters(); }
 
 // ---------- Popup ----------
+const IS_APPLE = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent) && "ontouchend" in document;
+const PIN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>';
+const NAV_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.7 2.3a1 1 0 0 0-1.1-.2l-18 8a1 1 0 0 0 .1 1.9l7.4 2 2 7.4a1 1 0 0 0 1.9.1l8-18a1 1 0 0 0-.3-1.2z"/></svg>';
+function mapLinks(s) {
+  const q = encodeURIComponent(`${s.name}, ${s.town}, New Zealand`);
+  const links = [
+    `<a class="maplink" href="https://www.google.com/maps/search/?api=1&query=${q}" target="_blank" rel="noopener">${PIN_SVG}Google Maps</a>`,
+    `<a class="maplink go" href="https://www.google.com/maps/dir/?api=1&destination=${q}" target="_blank" rel="noopener">${NAV_SVG}Directions</a>`
+  ];
+  if (IS_APPLE) links.push(`<a class="maplink" href="https://maps.apple.com/?q=${q}" target="_blank" rel="noopener">${PIN_SVG}Apple Maps</a>`);
+  return `<div class="maplinks">${links.join("")}</div>`;
+}
 function partsHtml(s) {
   const mon = MON[s.id], st = STATS[s.id];
   if (!mon && !st) return "";
@@ -104,6 +116,7 @@ function popupHtml(s) {
   return `<div class="pop" data-id="${esc(s.id)}">
     <h3>${esc(s.name)}${TOP.has(s.id) ? '<span class="crown" title="Monaco\'s top pick in region">★</span>' : ""}</h3>
     <p class="where">${esc(s.town)} · ${esc(s.region)}</p>
+    ${mapLinks(s)}
     <div class="trio">
       <div><span>Monaco</span><b>${fmt1(s.score)}</b></div>
       <div><span>Everyone</span><b>${st ? fmt1(st.avg) : "–"}</b><em>${st ? st.n + (st.n === 1 ? " rating" : " ratings") : "no ratings yet"}</em></div>
