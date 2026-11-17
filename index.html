@@ -16,7 +16,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="vendor/leaflet.css">
 <link rel="stylesheet" href="vendor/MarkerCluster.css">
-<link rel="stylesheet" href="style.css?v=202611181105">
+<link rel="stylesheet" href="style.css?v=202611181117">
 </head>
 <body>
 <div class="app">
@@ -215,12 +215,20 @@
   </div>
 </dialog>
 
+<dialog class="auth admin-partner" id="partner-dlg">
+  <div class="auth-in">
+    <button type="button" class="x" id="partner-close" aria-label="Close">×</button>
+    <div><h2 id="partner-title">Partner settings</h2><p id="partner-where"></p></div>
+    <div class="ap-body"></div>
+  </div>
+</dialog>
+
 <dialog class="lightbox" id="lightbox"><img id="lb-img" alt=""><p id="lb-cap"></p></dialog>
 
 <script src="vendor/leaflet.js"></script>
 <script src="vendor/leaflet.markercluster.js"></script>
 <script src="vendor/supabase.js"></script>
 <script src="vendor/qrcode.js"></script>
-<script src="app.js?v=202611181105"></script>
+<script src="app.js?v=202611181117"></script>
 </body>
 </html>

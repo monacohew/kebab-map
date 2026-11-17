@@ -399,3 +399,9 @@ dialog.card-dlg { width: min(420px, calc(100vw - 20px)); max-height: calc(100dvh
 .stampcard .dots i.last { border-color: var(--t7); }
 .stampcard .dots i.last.on { background: var(--t7); border-color: var(--t7); }
 .stampcard .next { font-weight: 700; color: var(--ink); }
+
+/* Admin partner settings: opened in its own window */
+.admin-open { margin-top: 10px; width: 100%; border: 1.5px dashed var(--accent); background: none; color: var(--accent); font-weight: 700; border-radius: 12px; padding: 9px; cursor: pointer; }
+dialog.admin-partner .ap-body { font-size: .92rem; gap: 12px; }
+dialog.admin-partner .ap-row input { padding: 9px 10px; }
+dialog.admin-partner .ap-row input[type=checkbox] { width: 22px; height: 22px; }

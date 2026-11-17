@@ -71,7 +71,7 @@ map.createPane("labels"); map.getPane("labels").style.zIndex = 450; map.getPane(
 CITIES.forEach(([n, la, ln]) => L.marker([la, ln], { pane: "labels", interactive: false, icon: L.divIcon({ className: "", html: `<div class="city-label">${n}</div>`, iconSize: [120, 14], iconAnchor: [-14, 22] }) }).addTo(map));
 
 const cluster = L.markerClusterGroup({
-  showCoverageOnHover: false, maxClusterRadius: 42, spiderfyOnMaxZoom: true,
+  showCoverageOnHover: false, maxClusterRadius: 42, spiderfyOnMaxZoom: true, removeOutsideVisibleBounds: false,
   iconCreateFunction: c => {
     const scores = c.getAllChildMarkers().map(m => ps(m.shop)).filter(s => s != null);
     const best = scores.length ? Math.max(...scores) : null;
@@ -151,7 +151,7 @@ function popupHtml(s) {
     ${monOrder ? `<p class="where">Monaco had: ${esc(monOrder)}</p>` : ""}
     ${mon?.photo_url ? `<button type="button" class="rev-photo mon-photo" data-photo="${esc(mon.photo_url)}" data-cap="Monaco's kebab at ${esc(s.name)}"><img src="${esc(mon.photo_url)}" alt="Monaco's kebab at ${esc(s.name)}" loading="lazy"></button>` : ""}
     ${action}
-    ${profile?.is_admin ? `<details class="admin-partner" data-shop="${esc(s.id)}"><summary>Partner settings (admin)</summary><div class="ap-body">Loading…</div></details>` : ""}
+    ${profile?.is_admin ? `<button type="button" class="admin-open" data-act="partner">Partner settings (admin)</button>` : ""}
     <div class="reviews" hidden></div>
   </div>`;
 }
@@ -184,20 +184,16 @@ function logEvent(shopId, kind) {
   if (LOGGED.has(key)) return; LOGGED.add(key);
   sb.from("shop_events").insert({ shop_id: shopId, kind, user_id: session?.user.id ?? null }).then(() => {}, () => {});
 }
-document.getElementById("map").addEventListener("toggle", ev => {
-  const d = ev.target.closest?.("details.admin-partner"); if (d && d.open) loadAdminPartner(d);
-}, true);
 document.getElementById("map").addEventListener("click", async ev => {
   const ml = ev.target.closest(".pop .maplink");
   if (ml) { logEvent(ml.closest(".pop").dataset.id, ml.dataset.kind); return; }
-  const ap = ev.target.closest(".admin-partner [data-ap]");
-  if (ap) { adminPartnerAction(ap); return; }
   const ph = ev.target.closest(".pop [data-photo]");
   if (ph) { showPhoto(ph.dataset.photo, ph.dataset.cap); return; }
   const btn = ev.target.closest(".pop [data-act]"); if (!btn) return;
   const s = SHOPS.find(x => x.id === btn.closest(".pop").dataset.id), act = btn.dataset.act;
   if (act === "login") openAuth("signup");
   else if (act === "rate") openRate(s);
+  else if (act === "partner") openPartnerSettings(s);
   else if (act === "delrev") adminDelete(btn.closest("[data-rid]").dataset.rid, s);
 });
 
@@ -834,6 +830,21 @@ $("addshop-form").addEventListener("submit", async ev => {
 });
 
 // ---------- Admin: partner settings in a shop card ----------
+function openPartnerSettings(s) {
+  const d = $("partner-dlg");
+  d.dataset.shop = s.id;
+  $("partner-title").textContent = s.name;
+  $("partner-where").textContent = s.address || s.town;
+  d.querySelector(".ap-body").innerHTML = "Loading…";
+  d.showModal();
+  loadAdminPartner(d);
+}
+$("partner-close").onclick = () => $("partner-dlg").close();
+$("partner-dlg").addEventListener("click", ev => {
+  const ap = ev.target.closest("[data-ap]");
+  if (ap) adminPartnerAction(ap);
+  else if (ev.target === $("partner-dlg")) $("partner-dlg").close();
+});
 async function loadAdminPartner(d) {
   const shopId = d.dataset.shop, p = PARTNERS[shopId], body = d.querySelector(".ap-body");
   let staffHtml = "";
@@ -848,7 +859,6 @@ async function loadAdminPartner(d) {
     <label class="ap-row"><span>Average kebab price $</span><input type="number" min="5" max="100" step="0.5" value="${p ? num(p.avg_price) : 18}" data-ap-price><button type="button" class="btn ghost" data-ap="price">Save</button></label>
     ${staffHtml}
     <p class="ap-msg"></p>`;
-  fitPopup(openPopup);
 }
 async function adminPartnerAction(btn) {
   const d = btn.closest(".admin-partner"), shopId = d.dataset.shop, msg = d.querySelector(".ap-msg");
@@ -864,7 +874,9 @@ async function adminPartnerAction(btn) {
   } else if (btn.dataset.ap === "unstaff") ({ error } = await sb.rpc("admin_remove_staff", { p_shop: shopId, p_user: btn.dataset.user }));
   if (error) { console.error(error); return say("Couldn't save that. Try again."); }
   await loadPartners();
-  MARKERS[shopId]?.setIcon(pinIcon(SHOPS.find(s => s.id === shopId)));
+  const shop = SHOPS.find(s => s.id === shopId);
+  MARKERS[shopId]?.setIcon(pinIcon(shop));
+  if (openPopup && shop) refreshPopup(shop);
   await loadAdminPartner(d);
   d.querySelector(".ap-msg").textContent = "Saved.";
 }
