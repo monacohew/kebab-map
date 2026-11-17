@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Monaco's Kebab Map</title>
 <meta name="theme-color" content="#2D5BFF">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/app-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="description" content="Turkish kebab shops around New Zealand, tried and scored by Monaco. Add your own scores and see how you compare.">
 <meta property="og:title" content="Monaco's Kebab Map">
 <meta property="og:description" content="The best Turkish kebabs in every region of NZ. Rate them yourself and see if you agree.">
@@ -13,7 +16,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="vendor/leaflet.css">
 <link rel="stylesheet" href="vendor/MarkerCluster.css">
-<link rel="stylesheet" href="style.css?v=202611181018">
+<link rel="stylesheet" href="style.css?v=202611181105">
 </head>
 <body>
 <div class="app">
@@ -38,6 +41,7 @@
       </div>
       <div class="discover-bar" id="discover-bar" hidden>
         <label class="switch"><input type="checkbox" id="show-mon" checked><span class="track"></span>Show Monaco's shops</label>
+        <label class="switch"><input type="checkbox" id="partners-only"><span class="track"></span>Partners only</label>
         <button type="button" class="btn" id="add-shop">+ Add a missing shop</button>
       </div>
       <div class="stats" id="stats"></div>
@@ -193,11 +197,30 @@
 </dialog>
 <div class="pickbar" id="pickbar" hidden><span>Tap the map where the shop is</span><button type="button" class="btn ghost" id="pick-cancel">Cancel</button></div>
 
+<dialog class="auth card-dlg" id="card">
+  <div class="auth-in">
+    <button type="button" class="x" id="card-close" aria-label="Close">×</button>
+    <div class="card-head"><span class="avatar" id="card-avatar"></span><div><b id="card-name"></b><small id="card-clock"></small></div></div>
+    <div class="card-qr-wrap" id="card-ring"><canvas id="card-qr" aria-label="Your card code for the shop to scan"></canvas></div>
+    <p class="card-hint">Show this to the shop when you order. The code refreshes every 30 seconds.</p>
+    <p class="fine" id="card-status"></p>
+    <div class="card-result" id="card-result" hidden></div>
+    <div id="card-rate"></div>
+    <p class="card-rule" id="card-rule"></p>
+    <div class="qlabel">Your kebab passport</div>
+    <div class="passport" id="card-passport"></div>
+    <div class="pbadges" id="card-badges"></div>
+    <div class="qlabel">Your stamp cards</div>
+    <div id="card-cards"></div>
+  </div>
+</dialog>
+
 <dialog class="lightbox" id="lightbox"><img id="lb-img" alt=""><p id="lb-cap"></p></dialog>
 
 <script src="vendor/leaflet.js"></script>
 <script src="vendor/leaflet.markercluster.js"></script>
 <script src="vendor/supabase.js"></script>
-<script src="app.js?v=202611181018"></script>
+<script src="vendor/qrcode.js"></script>
+<script src="app.js?v=202611181105"></script>
 </body>
 </html>

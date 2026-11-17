@@ -47,7 +47,10 @@ let session = null, profile = null;
 let activeRegion = "All", view = "best", todoOnly = false, mineOnly = false;
 let mode = "monaco", showMon = true;   // mode: "monaco" (Monaco's picks) or "discover" (every shop)
 const isMon = s => s.source === "monaco" || !!MON[s.id];
-const VIS = () => SHOPS.filter(s => mode === "monaco" ? isMon(s) : (showMon || !isMon(s)));
+let shopsIStaff = [];
+let PARTNERS = {}, SETTINGS = { program_name: "Kebab Crew", stamps_needed: 6, reward_text: "$5 off" }, partnersOnly = false;
+const isPartner = s => !!PARTNERS[s.id]?.active;
+const VIS = () => SHOPS.filter(s => mode === "monaco" ? isMon(s) : ((showMon || !isMon(s)) && (!partnersOnly || isPartner(s))));
 // The number on a pin: Monaco's score on his shops, everyone's average on the rest
 const ps = s => (mode === "monaco" || isMon(s)) ? s.score : (STATS[s.id]?.avg ?? null);
 const TOP = new Set();
@@ -80,7 +83,7 @@ map.addLayer(cluster);
 const pinIcon = s => {
   const v = ps(s), monBadge = mode === "discover" && isMon(s);
   const label = v == null ? (mode === "discover" && !isMon(s) ? "+" : "?") : fmt(v);
-  return L.divIcon({ className: "", iconSize: [40, 40], iconAnchor: [20, 48], popupAnchor: [0, -44], html: `<div class="drop"><div class="pin tier-${tier(v)}${TOP.has(s.id) ? " top" : ""}${monBadge ? " monb" : ""}${v == null && mode === "discover" ? " fresh" : ""}"><b>${label}</b></div></div>` });
+  return L.divIcon({ className: "", iconSize: [40, 40], iconAnchor: [20, 48], popupAnchor: [0, -44], html: `<div class="drop"><div class="pin tier-${tier(v)}${TOP.has(s.id) ? " top" : ""}${monBadge ? " monb" : ""}${isPartner(s) ? " partner" : ""}${v == null && mode === "discover" ? " fresh" : ""}"><b>${label}</b></div></div>` });
 };
 function buildMarkers() {
   cluster.clearLayers();
@@ -113,10 +116,10 @@ const NAV_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.7 2.3a
 function mapLinks(s) {
   const q = encodeURIComponent(`${s.name}, ${s.address || s.town}, New Zealand`);
   const links = [
-    `<a class="maplink" href="https://www.google.com/maps/search/?api=1&query=${q}" target="_blank" rel="noopener">${PIN_SVG}Google Maps</a>`,
-    `<a class="maplink go" href="https://www.google.com/maps/dir/?api=1&destination=${q}" target="_blank" rel="noopener">${NAV_SVG}Directions</a>`
+    `<a class="maplink" data-kind="maps" href="https://www.google.com/maps/search/?api=1&query=${q}" target="_blank" rel="noopener">${PIN_SVG}Google Maps</a>`,
+    `<a class="maplink go" data-kind="directions" href="https://www.google.com/maps/dir/?api=1&destination=${q}" target="_blank" rel="noopener">${NAV_SVG}Directions</a>`
   ];
-  if (IS_APPLE) links.push(`<a class="maplink" href="https://maps.apple.com/?q=${q}" target="_blank" rel="noopener">${PIN_SVG}Apple Maps</a>`);
+  if (IS_APPLE) links.push(`<a class="maplink" data-kind="maps" href="https://maps.apple.com/?q=${q}" target="_blank" rel="noopener">${PIN_SVG}Apple Maps</a>`);
   return `<div class="maplinks">${links.join("")}</div>`;
 }
 function partsHtml(s) {
@@ -138,6 +141,7 @@ function popupHtml(s) {
     <h3>${esc(s.name)}${TOP.has(s.id) ? '<span class="crown" title="Monaco\'s top pick in region">★</span>' : ""}</h3>
     <p class="where">${s.address ? esc(s.address) : esc(s.town)} · ${esc(s.region)}</p>
     ${mapLinks(s)}
+    ${isPartner(s) ? `<div class="partner-banner"><b>${esc(SETTINGS.program_name)} partner</b><span>Show your card here. Every ${ordinal(SETTINGS.stamps_needed)} kebab is ${esc(SETTINGS.reward_text)}.</span></div>` : ""}
     <div class="trio">
       <div><span>Monaco</span><b>${fmt1(s.score)}</b>${s.score == null ? "<em>not tried yet</em>" : ""}</div>
       <div><span>Everyone</span><b>${st ? fmt1(st.avg) : "–"}</b><em>${st ? st.n + (st.n === 1 ? " rating" : " ratings") : "no ratings yet"}</em></div>
@@ -147,6 +151,7 @@ function popupHtml(s) {
     ${monOrder ? `<p class="where">Monaco had: ${esc(monOrder)}</p>` : ""}
     ${mon?.photo_url ? `<button type="button" class="rev-photo mon-photo" data-photo="${esc(mon.photo_url)}" data-cap="Monaco's kebab at ${esc(s.name)}"><img src="${esc(mon.photo_url)}" alt="Monaco's kebab at ${esc(s.name)}" loading="lazy"></button>` : ""}
     ${action}
+    ${profile?.is_admin ? `<details class="admin-partner" data-shop="${esc(s.id)}"><summary>Partner settings (admin)</summary><div class="ap-body">Loading…</div></details>` : ""}
     <div class="reviews" hidden></div>
   </div>`;
 }
@@ -157,6 +162,7 @@ map.on("popupopen", e => {
   const el = e.popup.getElement().querySelector(".pop"); if (!el) return;
   el.querySelectorAll(".mon-photo img").forEach(img => img.addEventListener("load", () => fitPopup(e.popup), { once: true }));
   setTimeout(() => fitPopup(e.popup), 350);
+  logEvent(el.dataset.id, "view");
   loadReviews(SHOPS.find(x => x.id === el.dataset.id), e.popup);
 });
 map.on("popupclose", () => { openPopup = null; });
@@ -172,7 +178,20 @@ async function removePhotoFile(url) {
   if (!url?.startsWith(PHOTO_PREFIX)) return;
   await sb.storage.from("kebab-photos").remove([decodeURIComponent(url.slice(PHOTO_PREFIX.length))]);
 }
+const LOGGED = new Set();
+function logEvent(shopId, kind) {
+  const key = shopId + ":" + kind + ":" + (session?.user.id || "anon");
+  if (LOGGED.has(key)) return; LOGGED.add(key);
+  sb.from("shop_events").insert({ shop_id: shopId, kind, user_id: session?.user.id ?? null }).then(() => {}, () => {});
+}
+document.getElementById("map").addEventListener("toggle", ev => {
+  const d = ev.target.closest?.("details.admin-partner"); if (d && d.open) loadAdminPartner(d);
+}, true);
 document.getElementById("map").addEventListener("click", async ev => {
+  const ml = ev.target.closest(".pop .maplink");
+  if (ml) { logEvent(ml.closest(".pop").dataset.id, ml.dataset.kind); return; }
+  const ap = ev.target.closest(".admin-partner [data-ap]");
+  if (ap) { adminPartnerAction(ap); return; }
   const ph = ev.target.closest(".pop [data-photo]");
   if (ph) { showPhoto(ph.dataset.photo, ph.dataset.cap); return; }
   const btn = ev.target.closest(".pop [data-act]"); if (!btn) return;
@@ -188,9 +207,11 @@ async function loadReviews(s, popup) {
   if (!box || error) return;
   const rows = (data || []).filter(r => !r.profiles?.is_admin);
   if (!rows.length) return;
+  const { data: ver } = await sb.rpc("verified_ratings", { p_shop: s.id });
+  const VER = new Set((ver || []).map(Number));
   box.innerHTML = rows.map(r => {
     const order = orderText(r);
-    return `<div class="rev" data-rid="${r.id}">${avatarHtml(r.profiles, "sm")}<b>${esc(r.profiles?.display_name || "Someone")}</b> · ${fmt1(num(r.score))}/10
+    return `<div class="rev" data-rid="${r.id}">${avatarHtml(r.profiles, "sm")}<b>${esc(r.profiles?.display_name || "Someone")}</b> · ${fmt1(num(r.score))}/10${VER.has(Number(r.id)) ? ' <span class="verified" title="Scanned in at this shop">✓ Verified kebab</span>' : ""}
       ${profile?.is_admin && r.user_id !== session?.user.id ? ' <button class="auth-switch" type="button" data-act="delrev">remove</button>' : ""}
       ${order ? `<span class="order">${esc(order)}</span>` : ""}
       ${r.comment ? `<q>${esc(r.comment)}</q>` : ""}
@@ -203,7 +224,8 @@ async function loadReviews(s, popup) {
 // Re-measure the card and pan the map so the whole card is visible
 function fitPopup(popup) {
   if (!popup || !popup.isOpen()) return;
-  popup.update();
+  // Re-measure without re-rendering the card (update() would rebuild the content)
+  if (popup._updateLayout) { popup._updateLayout(); popup._updatePosition(); } else popup.update();
   requestAnimationFrame(() => {
     const el = popup.getElement(); if (!el) return;
     const m = map.getContainer().getBoundingClientRect(), r = el.getBoundingClientRect();
@@ -488,7 +510,9 @@ function renderAccount() {
   btn.setAttribute("aria-label", "Your profile menu");
   $("me-menu").innerHTML = `
     <div class="who"><b>${esc(profile?.display_name || "You")}</b><span>${esc(session.user.email)}${profile?.is_admin ? " · admin" : ""}</span></div>
+    <button type="button" id="m-card" class="m-card">My ${esc(SETTINGS.program_name)} card</button>
     <button type="button" id="m-profile">Edit profile & photo</button>
+    ${shopsIStaff.length ? `<a class="m-link" href="shop/">Open the shop app</a>` : ""}
     ${profile?.is_admin ? "" : `<button type="button" id="m-mine">My ratings</button>`}
     <button type="button" id="logout">Log out</button>`;
 }
@@ -503,6 +527,7 @@ document.addEventListener("click", e => { if (!e.target.closest("#me")) closeMen
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeMenu(); });
 $("me-menu").addEventListener("click", e => {
   if (e.target.id === "m-profile") { closeMenu(); openProfile(); }
+  if (e.target.id === "m-card") { closeMenu(); openCard(); }
   if (e.target.id === "m-mine") {
     closeMenu(); view = "all"; mineOnly = true;
     $("tab-all").setAttribute("aria-selected", "true"); $("tab-best").setAttribute("aria-selected", "false");
@@ -606,6 +631,12 @@ async function loadShops() {
   if (error) throw error;
   SHOPS = data.map(r => ({ ...r, legacy: num(r.monaco_score), score: num(r.monaco_score) }));
 }
+async function loadPartners() {
+  const [{ data: ps }, { data: st }] = await Promise.all([sb.from("partners").select("*"), sb.from("settings").select("*").maybeSingle()]);
+  PARTNERS = {}; (ps || []).forEach(p => PARTNERS[p.shop_id] = p);
+  if (st) SETTINGS = st;
+}
+const ordinal = n => n + (["th","st","nd","rd"][((n % 100) - 20) % 10] || ["th","st","nd","rd"][n % 100] || "th");
 async function loadMonaco() {
   const { data: admins } = await sb.from("profiles").select("id").eq("is_admin", true);
   ADMIN_IDS = (admins || []).map(a => a.id);
@@ -620,7 +651,7 @@ async function loadStats() {
   (data || []).forEach(r => STATS[r.shop_id] = { avg: num(r.avg_score), n: r.rating_count, meat: num(r.avg_meat), sauce: num(r.avg_sauce), bread: num(r.avg_bread), value: num(r.avg_value) });
 }
 async function loadMine() {
-  MINE = {}; profile = null;
+  MINE = {}; profile = null; shopsIStaff = [];
   if (!session) return;
   const [{ data: rows }, { data: prof }] = await Promise.all([
     sb.from("ratings").select("*").eq("user_id", session.user.id),
@@ -628,6 +659,8 @@ async function loadMine() {
   ]);
   (rows || []).forEach(r => MINE[r.shop_id] = r);
   profile = prof;
+  const { data: st } = await sb.from("shop_staff").select("shop_id");
+  shopsIStaff = (st || []).map(x => x.shop_id);
 }
 
 // ---------- Auth ----------
@@ -735,6 +768,7 @@ function setMode(m) {
 }
 $("mode-monaco").onclick = () => setMode("monaco");
 $("mode-discover").onclick = () => setMode("discover");
+$("partners-only").addEventListener("change", e => { partnersOnly = e.target.checked; map.closePopup(); refreshPins(); render(); });
 $("show-mon").addEventListener("change", e => { showMon = e.target.checked; map.closePopup(); refreshPins(); render(); });
 
 // Add a missing shop
@@ -799,12 +833,138 @@ $("addshop-form").addEventListener("submit", async ev => {
   openShop(row.id);
 });
 
+// ---------- Admin: partner settings in a shop card ----------
+async function loadAdminPartner(d) {
+  const shopId = d.dataset.shop, p = PARTNERS[shopId], body = d.querySelector(".ap-body");
+  let staffHtml = "";
+  if (p) {
+    const { data: staff } = await sb.rpc("admin_list_staff", { p_shop: shopId });
+    staffHtml = `<div class="ap-staff">${(staff || []).map(u => `<div>${esc(u.name)} <small>${esc(u.email)}</small> <button type="button" class="auth-switch" data-ap="unstaff" data-user="${u.user_id}">remove</button></div>`).join("") || "<small>No staff yet.</small>"}</div>
+      <div class="ap-row"><input type="email" placeholder="Staff member's email" data-ap-email><button type="button" class="btn ghost" data-ap="staff">Add staff</button></div>
+      <small>They need to make a normal account on the site first, using that email.</small>`;
+  }
+  body.innerHTML = `
+    <label class="ap-row"><span>Partner shop</span><input type="checkbox" data-ap="toggle" ${p?.active ? "checked" : ""}></label>
+    <label class="ap-row"><span>Average kebab price $</span><input type="number" min="5" max="100" step="0.5" value="${p ? num(p.avg_price) : 18}" data-ap-price><button type="button" class="btn ghost" data-ap="price">Save</button></label>
+    ${staffHtml}
+    <p class="ap-msg"></p>`;
+  fitPopup(openPopup);
+}
+async function adminPartnerAction(btn) {
+  const d = btn.closest(".admin-partner"), shopId = d.dataset.shop, msg = d.querySelector(".ap-msg");
+  const price = parseFloat(d.querySelector("[data-ap-price]")?.value) || 18;
+  const say = t => { if (msg) msg.textContent = t; };
+  let error = null;
+  if (btn.dataset.ap === "toggle") ({ error } = await sb.rpc("admin_set_partner", { p_shop: shopId, p_active: btn.checked, p_avg_price: price }));
+  else if (btn.dataset.ap === "price") ({ error } = await sb.rpc("admin_set_partner", { p_shop: shopId, p_active: PARTNERS[shopId]?.active ?? true, p_avg_price: price }));
+  else if (btn.dataset.ap === "staff") {
+    const email = d.querySelector("[data-ap-email]").value.trim();
+    const r = await sb.rpc("admin_add_staff", { p_shop: shopId, p_email: email }); error = r.error;
+    if (!error && r.data?.status === "no_account") return say(`No account uses ${email} yet. Ask them to sign up on the site first.`);
+  } else if (btn.dataset.ap === "unstaff") ({ error } = await sb.rpc("admin_remove_staff", { p_shop: shopId, p_user: btn.dataset.user }));
+  if (error) { console.error(error); return say("Couldn't save that. Try again."); }
+  await loadPartners();
+  MARKERS[shopId]?.setIcon(pinIcon(SHOPS.find(s => s.id === shopId)));
+  await loadAdminPartner(d);
+  d.querySelector(".ap-msg").textContent = "Saved.";
+}
+
+// ---------- My Kebab Crew card ----------
+let cardTimer = null, cardChannel = null, cardExpires = 0;
+async function myScans() {
+  const { data } = await sb.from("scans").select("shop_id, stamp_no, is_reward, scan_day, created_at").eq("user_id", session.user.id).order("created_at", { ascending: false });
+  return data || [];
+}
+function drawQR(text) {
+  const qr = qrcode(0, "M"); qr.addData(text); qr.make();
+  const n = qr.getModuleCount(), c = $("card-qr"), px = 8, q = 3, size = (n + q * 2) * px;
+  c.width = c.height = size;
+  const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, size, size); g.fillStyle = "#12183A";
+  for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) if (qr.isDark(r, k)) g.fillRect((k + q) * px, (r + q) * px, px, px);
+}
+async function refreshToken() {
+  const { data, error } = await sb.rpc("issue_card_token");
+  if (error || !data?.token) { $("card-status").textContent = "Couldn't load your card. Check your connection."; return; }
+  drawQR(data.token);
+  cardExpires = Date.now() + 30000;
+  $("card-qr").classList.remove("stale");
+}
+function tickCard() {
+  const left = Math.max(0, cardExpires - Date.now());
+  $("card-ring").style.setProperty("--p", (left / 30000).toFixed(3));
+  $("card-clock").textContent = new Date().toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit", second: "2-digit" });
+  if (left <= 0) refreshToken();
+}
+async function renderCardStamps() {
+  const scans = await myScans();
+  const n = SETTINGS.stamps_needed, byShop = {};
+  scans.forEach(sc => { (byShop[sc.shop_id] ||= []).push(sc); });
+  const shopsVisited = Object.keys(byShop).map(id => SHOPS.find(s => s.id === id)).filter(Boolean);
+  const regions = new Set(shopsVisited.map(s => s.region));
+  $("card-passport").innerHTML = `
+    <div class="pp"><b>${shopsVisited.length}</b><span>shops</span></div>
+    <div class="pp"><b>${regions.size}</b><span>regions</span></div>
+    <div class="pp"><b>${scans.length}</b><span>kebabs scanned</span></div>`;
+  const badges = [[1, "First scan"], [5, "5 shops"], [10, "10 shops"], [25, "25 shops"]].filter(([k]) => shopsVisited.length >= k).map(([, l]) => l);
+  if (regions.size >= 3) badges.push("3 regions");
+  if (regions.has("Northland") && regions.has("Southland")) badges.push("North to South");
+  $("card-badges").innerHTML = badges.map(b => `<span class="pbadge">${esc(b)}</span>`).join("");
+  $("card-cards").innerHTML = shopsVisited.length ? shopsVisited.map(s => {
+    const list = byShop[s.id], have = list.length % n, last = list[0];
+    const rewardToday = last.is_reward && last.scan_day === new Date().toLocaleDateString("en-CA", { timeZone: "Pacific/Auckland" });
+    const dots = Array.from({ length: n }, (_, i) => `<i class="${i < (rewardToday ? n : have) ? "on" : ""}${i === n - 1 ? " last" : ""}"></i>`).join("");
+    return `<div class="stampcard"><div><b>${esc(s.name)}</b><small>${esc(s.town)}</small></div><div class="dots">${dots}</div>
+      <small class="next">${rewardToday ? `Reward used today: ${esc(SETTINGS.reward_text)}` : have === n - 1 ? `Next kebab here is ${esc(SETTINGS.reward_text)}!` : `${n - 1 - have} more until ${esc(SETTINGS.reward_text)}`}</small></div>`;
+  }).join("") : `<p class="fine">No stamps yet. Look for the partner badge on the map, then show this card when you order.</p>`;
+}
+async function openCard() {
+  if (!session) { openAuth("signup"); return; }
+  $("card-name").textContent = profile?.display_name || "You";
+  $("card-avatar").outerHTML = avatarHtml(profile, "card-av").replace('class="avatar card-av"', 'class="avatar card-av" id="card-avatar"');
+  $("card-rule").textContent = `Every ${ordinal(SETTINGS.stamps_needed)} kebab at the same partner shop is ${SETTINGS.reward_text}.`;
+  $("card-status").textContent = "";
+  $("card-result").hidden = true;
+  $("card").showModal();
+  await refreshToken();
+  clearInterval(cardTimer); cardTimer = setInterval(tickCard, 250);
+  renderCardStamps();
+  // live update when a shop scans this card
+  cardChannel = sb.channel("my-scans-" + session.user.id)
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "scans", filter: `user_id=eq.${session.user.id}` }, payload => onScanned(payload.new))
+    .subscribe();
+}
+function onScanned(sc) {
+  const s = SHOPS.find(x => x.id === sc.shop_id), n = SETTINGS.stamps_needed;
+  $("card-result").innerHTML = sc.is_reward
+    ? `<b>Reward unlocked!</b><span>${esc(SETTINGS.reward_text)} on this kebab at ${esc(s?.name || "this shop")}.</span>`
+    : `<b>Stamp ${sc.stamp_no} of ${n}</b><span>at ${esc(s?.name || "this shop")}. ${n - sc.stamp_no} more until ${esc(SETTINGS.reward_text)}.</span>`;
+  $("card-result").className = "card-result" + (sc.is_reward ? " reward" : "");
+  $("card-result").hidden = false;
+  if (navigator.vibrate) navigator.vibrate(sc.is_reward ? [80, 60, 80, 60, 160] : 80);
+  renderCardStamps();
+  refreshToken();
+  if (s) $("card-rate").innerHTML = `<button type="button" class="btn wide" data-card-rate="${esc(s.id)}">Rate this kebab</button>`;
+}
+function closeCard() {
+  clearInterval(cardTimer); cardTimer = null;
+  if (cardChannel) { sb.removeChannel(cardChannel); cardChannel = null; }
+  $("card-rate").innerHTML = "";
+  if ($("card").open) $("card").close();
+}
+$("card-close").onclick = closeCard;
+$("card").addEventListener("close", closeCard);
+$("card").addEventListener("click", e => {
+  const b = e.target.closest("[data-card-rate]");
+  if (b) { const s = SHOPS.find(x => x.id === b.dataset.cardRate); closeCard(); if (s) openRate(s); }
+});
+document.addEventListener("visibilitychange", () => { if (!document.hidden && $("card").open) refreshToken(); });
+
 // ---------- Start ----------
 (async () => {
   try {
     const { data } = await sb.auth.getSession();
     session = data.session;
-    await Promise.all([loadShops(), loadStats(), loadMine(), loadMonaco()]);
+    await Promise.all([loadShops(), loadStats(), loadMine(), loadMonaco(), loadPartners()]);
     try { if (localStorage.getItem("kebab.mode") === "discover") mode = "discover"; } catch {}
     applyMonaco();
     if (mode === "discover") setMode("discover"); else render();

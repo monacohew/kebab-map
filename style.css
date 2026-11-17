@@ -350,3 +350,52 @@ dialog.lightbox p { color: #fff; text-align: center; margin: 8px 0 0; font-weigh
 .pickbar .btn.ghost { color: #fff; border-color: rgba(255,255,255,.35); }
 .picking .leaflet-container { cursor: crosshair; }
 .fine a { color: var(--accent); }
+
+/* ---- Partners ---- */
+.pin.partner { box-shadow: 0 0 0 3px var(--t7), var(--shadow); }
+.partner-banner { display: flex; flex-direction: column; gap: 2px; background: linear-gradient(120deg, #FFF3C4, #FFE6F0); border: 1.5px solid var(--t7); border-radius: 12px; padding: 8px 11px; margin: -2px 0 12px; font-size: .8rem; color: var(--ink); }
+.partner-banner b { font-family: var(--font-display); font-size: .9rem; }
+.verified { display: inline-block; font-size: .68rem; font-weight: 800; color: var(--t8); background: color-mix(in srgb, var(--t8) 12%, transparent); border-radius: 999px; padding: 1px 7px; margin-left: 4px; }
+details.admin-partner { margin-top: 10px; border: 1.5px dashed var(--accent); border-radius: 12px; padding: 8px 10px; font-size: .82rem; }
+details.admin-partner summary { cursor: pointer; font-weight: 700; color: var(--accent); }
+.ap-body { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.ap-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ap-row input[type=number] { width: 70px; }
+.ap-row input[type=email] { flex: 1; min-width: 140px; }
+.ap-row input { border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; background: var(--bg); }
+.ap-staff { display: flex; flex-direction: column; gap: 4px; }
+.ap-staff small, .ap-body > small { color: var(--muted); }
+.ap-msg { margin: 0; color: var(--t8); font-weight: 700; }
+.me-menu .m-card { color: var(--accent); }
+.me-menu .m-link { padding: 10px 12px; border-radius: 10px; font-weight: 600; color: var(--ink); text-decoration: none; }
+.me-menu .m-link:hover { background: var(--bg); color: var(--accent); }
+
+/* ---- My card ---- */
+dialog.card-dlg { width: min(420px, calc(100vw - 20px)); max-height: calc(100dvh - 20px); overflow-y: auto; }
+.card-head { display: flex; align-items: center; gap: 12px; }
+.card-head b { display: block; font-family: var(--font-display); font-size: 1.25rem; }
+.card-head small { color: var(--muted); font-variant-numeric: tabular-nums; }
+.card-qr-wrap { --p: 1; align-self: center; padding: 10px; border-radius: 24px; background: conic-gradient(var(--accent) calc(var(--p) * 360deg), var(--line) 0); animation: hue 6s linear infinite; }
+.card-qr-wrap canvas { display: block; width: min(260px, 70vw); height: auto; border-radius: 16px; background: #fff; image-rendering: pixelated; }
+@keyframes hue { to { filter: hue-rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .card-qr-wrap { animation: none; } }
+.card-hint { text-align: center; margin: 0; color: var(--muted); font-size: .86rem; }
+.card-result { display: flex; flex-direction: column; gap: 2px; text-align: center; background: color-mix(in srgb, var(--t8) 14%, #fff); border: 2px solid var(--t8); border-radius: 14px; padding: 12px; }
+.card-result b { font-family: var(--font-display); font-size: 1.3rem; color: var(--t8); }
+.card-result.reward { background: linear-gradient(120deg, #FFF3C4, #FFE6F0); border-color: var(--t7); animation: pop .5s cubic-bezier(.3, 1.6, .5, 1); }
+.card-result.reward b { color: var(--t9); font-size: 1.6rem; }
+.card-rule { margin: 0; font-weight: 700; text-align: center; font-size: .9rem; }
+.passport { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.pp { background: var(--bg); border-radius: 12px; padding: 10px; text-align: center; }
+.pp b { display: block; font-family: var(--font-display); font-size: 1.5rem; color: var(--accent); }
+.pp span { font-size: .75rem; color: var(--muted); }
+.pbadges { display: flex; flex-wrap: wrap; gap: 6px; }
+.pbadge { background: linear-gradient(120deg, var(--band), var(--band-2)); color: #fff; font-weight: 700; font-size: .76rem; border-radius: 999px; padding: 4px 10px; }
+.stampcard { background: var(--bg); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.stampcard small { color: var(--muted); display: block; }
+.stampcard .dots { display: flex; gap: 6px; }
+.stampcard .dots i { width: 22px; height: 22px; border-radius: 50%; border: 2px dashed var(--line); background: #fff; }
+.stampcard .dots i.on { background: var(--t8); border: 2px solid var(--t8); }
+.stampcard .dots i.last { border-color: var(--t7); }
+.stampcard .dots i.last.on { background: var(--t7); border-color: var(--t7); }
+.stampcard .next { font-weight: 700; color: var(--ink); }

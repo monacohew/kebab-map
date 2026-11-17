@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kebab Crew for Shops</title>
+<meta name="theme-color" content="#12183A">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="../icons/shop-192.png">
+<link rel="icon" href="../icons/shop-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="../style.css?v=202611181105">
+<link rel="stylesheet" href="shop.css?v=202611181105">
+</head>
+<body class="shopapp">
+<header class="sh-top">
+  <div class="sh-brand"><img src="../icons/shop-192.png" alt="" width="40" height="40"><div><b id="prog-name">Kebab Crew</b><span>for Shops</span></div></div>
+  <div class="sh-shop" id="sh-shop"></div>
+</header>
+
+<main class="sh-main">
+  <!-- Signed out -->
+  <section id="v-login" hidden>
+    <form class="sh-card auth-in" id="login-form" novalidate>
+      <h1>Shop login</h1>
+      <p>Log in with the account your shop was set up with.</p>
+      <div class="field"><label for="l-email">Email</label><input id="l-email" type="email" autocomplete="email"></div>
+      <div class="field"><label for="l-pass">Password</label><input id="l-pass" type="password" autocomplete="current-password"></div>
+      <div class="msg" id="l-msg" hidden></div>
+      <button class="btn wide" type="submit" id="l-go">Log in</button>
+      <p class="fine">No account yet? <a href="../">Sign up on the kebab map</a>, then ask Monaco to link it to your shop. Forgot your password? Reset it on the <a href="../">kebab map</a>.</p>
+    </form>
+  </section>
+
+  <!-- Signed in but not linked to a shop -->
+  <section id="v-nostaff" hidden>
+    <div class="sh-card">
+      <h1>Nearly there</h1>
+      <p id="nostaff-text"></p>
+      <button class="btn ghost" type="button" data-logout>Log out</button>
+    </div>
+  </section>
+
+  <!-- Working app -->
+  <section id="v-app" hidden>
+    <nav class="sh-tabs" role="tablist">
+      <button role="tab" id="t-scan" aria-selected="true">Scan</button>
+      <button role="tab" id="t-stats" aria-selected="false">Your numbers</button>
+    </nav>
+
+    <div id="p-scan">
+      <button class="scan-big" type="button" id="scan-btn">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h6v2H5v4H3V3zm12 0h6v6h-2V5h-4V3zM3 15h2v4h4v2H3v-6zm16 0h2v6h-6v-2h4v-4zM7 11h10v2H7z"/></svg>
+        <span>Scan a customer's card</span>
+      </button>
+      <p class="sh-rule" id="rule-text"></p>
+      <div class="sh-today" id="today"></div>
+    </div>
+
+    <div id="p-stats" hidden>
+      <div class="range" role="group" aria-label="Time period">
+        <button data-days="7">7 days</button><button data-days="30" aria-pressed="true">30 days</button><button data-days="90">90 days</button>
+      </div>
+      <div id="stats-body"><p class="fine">Loading your numbers…</p></div>
+    </div>
+    <p class="sh-foot"><button class="auth-switch" type="button" data-logout>Log out</button> · <a href="../">Open the kebab map</a></p>
+  </section>
+</main>
+
+<!-- Camera -->
+<div class="cam" id="cam" hidden>
+  <video id="cam-video" playsinline muted></video>
+  <div class="cam-frame"></div>
+  <p class="cam-hint" id="cam-hint">Point at the QR code on the customer's phone</p>
+  <button class="btn" type="button" id="cam-close">Cancel</button>
+  <canvas id="cam-canvas" hidden></canvas>
+</div>
+
+<!-- Result -->
+<div class="result" id="result" hidden>
+  <div class="result-in" id="result-in"></div>
+  <button class="btn wide" type="button" id="result-next">Scan the next customer</button>
+  <button class="auth-switch" type="button" id="result-done">Done</button>
+</div>
+
+<script src="../vendor/supabase.js"></script>
+<script src="../vendor/jsQR.js"></script>
+<script src="shop.js?v=202611181105"></script>
+</body>
+</html>
