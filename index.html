@@ -13,7 +13,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="vendor/leaflet.css">
 <link rel="stylesheet" href="vendor/MarkerCluster.css">
-<link rel="stylesheet" href="style.css?v=202611181008">
+<link rel="stylesheet" href="style.css?v=202611181018">
 </head>
 <body>
 <div class="app">
@@ -32,6 +32,14 @@
       </div>
     </header>
     <div class="top-extras">
+      <div class="modes" role="tablist" aria-label="What to show">
+        <button class="mode" role="tab" id="mode-monaco" aria-selected="true">Monaco's picks</button>
+        <button class="mode" role="tab" id="mode-discover" aria-selected="false">Discover</button>
+      </div>
+      <div class="discover-bar" id="discover-bar" hidden>
+        <label class="switch"><input type="checkbox" id="show-mon" checked><span class="track"></span>Show Monaco's shops</label>
+        <button type="button" class="btn" id="add-shop">+ Add a missing shop</button>
+      </div>
       <div class="stats" id="stats"></div>
       <div class="chips" id="chips" role="group" aria-label="Filter by region"></div>
     </div>
@@ -59,7 +67,8 @@
         <span><i style="background:var(--t0)"></i>under 5 skip it</span>
         <span><i style="background:var(--tn)"></i>no score yet</span>
       </div>
-      <p class="fine">Pin colours and numbers are Monaco's scores. Pins sit in the right town or suburb, not always on the exact street.</p>
+      <p class="fine" id="fine">Pin colours and numbers are Monaco's scores. Pins sit in the right town or suburb, not always on the exact street.</p>
+      <p class="fine">Extra shops in Discover come from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a> and from people using this site.</p>
     </div>
   </aside>
   <div class="map-wrap">
@@ -160,11 +169,35 @@
   </form>
 </dialog>
 
+<dialog class="auth" id="addshop">
+  <form class="auth-in" id="addshop-form" novalidate>
+    <button type="button" class="x" id="addshop-close" aria-label="Close">×</button>
+    <div>
+      <h2>Add a missing shop</h2>
+      <p>Found a kebab shop that isn't on the map? Add it so you and everyone else can rate it.</p>
+    </div>
+    <div class="field"><label for="as-name">Shop name</label><input id="as-name" maxlength="80" placeholder="e.g. Sultan's Kebabs"></div>
+    <div class="field"><label for="as-town">Town or suburb</label><input id="as-town" maxlength="60" placeholder="e.g. Riccarton, Christchurch"></div>
+    <div class="field">
+      <span class="qlabel">Where is it?</span>
+      <div class="loc-btns">
+        <button type="button" class="btn ghost" id="as-here">Use where I am now</button>
+        <button type="button" class="btn ghost" id="as-pick">Tap it on the map</button>
+      </div>
+      <p class="fine" id="as-loc">No location set yet.</p>
+    </div>
+    <div class="field"><label for="as-region">Region</label><select id="as-region"></select></div>
+    <div class="msg" id="as-msg" hidden></div>
+    <button class="btn wide" id="as-save" type="submit">Add shop</button>
+  </form>
+</dialog>
+<div class="pickbar" id="pickbar" hidden><span>Tap the map where the shop is</span><button type="button" class="btn ghost" id="pick-cancel">Cancel</button></div>
+
 <dialog class="lightbox" id="lightbox"><img id="lb-img" alt=""><p id="lb-cap"></p></dialog>
 
 <script src="vendor/leaflet.js"></script>
 <script src="vendor/leaflet.markercluster.js"></script>
 <script src="vendor/supabase.js"></script>
-<script src="app.js?v=202611181008"></script>
+<script src="app.js?v=202611181018"></script>
 </body>
 </html>

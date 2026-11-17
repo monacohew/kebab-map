@@ -45,6 +45,11 @@ let MINE = {};         // shop_id -> my rating row
 let ADMIN_IDS = [];
 let session = null, profile = null;
 let activeRegion = "All", view = "best", todoOnly = false, mineOnly = false;
+let mode = "monaco", showMon = true;   // mode: "monaco" (Monaco's picks) or "discover" (every shop)
+const isMon = s => s.source === "monaco" || !!MON[s.id];
+const VIS = () => SHOPS.filter(s => mode === "monaco" ? isMon(s) : (showMon || !isMon(s)));
+// The number on a pin: Monaco's score on his shops, everyone's average on the rest
+const ps = s => (mode === "monaco" || isMon(s)) ? s.score : (STATS[s.id]?.avg ?? null);
 const TOP = new Set();
 const MARKERS = {};
 
@@ -65,17 +70,23 @@ CITIES.forEach(([n, la, ln]) => L.marker([la, ln], { pane: "labels", interactive
 const cluster = L.markerClusterGroup({
   showCoverageOnHover: false, maxClusterRadius: 42, spiderfyOnMaxZoom: true,
   iconCreateFunction: c => {
-    const scores = c.getAllChildMarkers().map(m => m.shop.score).filter(s => s != null);
+    const scores = c.getAllChildMarkers().map(m => ps(m.shop)).filter(s => s != null);
     const best = scores.length ? Math.max(...scores) : null;
     return L.divIcon({ className: "", iconSize: [50, 50], iconAnchor: [25, 25], html: `<div class="clus tier-${tier(best)}"><div><b>${c.getChildCount()}</b><span>best ${fmt(best)}</span></div></div>` });
   }
 });
 map.addLayer(cluster);
 
-const pinIcon = s => L.divIcon({ className: "", iconSize: [40, 40], iconAnchor: [20, 48], popupAnchor: [0, -44], html: `<div class="drop"><div class="pin tier-${tier(s.score)}${TOP.has(s.id) ? " top" : ""}"><b>${s.score == null ? "?" : fmt(s.score)}</b></div></div>` });
+const pinIcon = s => {
+  const v = ps(s), monBadge = mode === "discover" && isMon(s);
+  const label = v == null ? (mode === "discover" && !isMon(s) ? "+" : "?") : fmt(v);
+  return L.divIcon({ className: "", iconSize: [40, 40], iconAnchor: [20, 48], popupAnchor: [0, -44], html: `<div class="drop"><div class="pin tier-${tier(v)}${TOP.has(s.id) ? " top" : ""}${monBadge ? " monb" : ""}${v == null && mode === "discover" ? " fresh" : ""}"><b>${label}</b></div></div>` });
+};
 function buildMarkers() {
   cluster.clearLayers();
-  SHOPS.forEach(s => {
+  for (const k in MARKERS) delete MARKERS[k];
+  computeTop();
+  VIS().forEach(s => {
     const m = L.marker([s.lat, s.lng], { title: `${s.name}, ${s.town}`, riseOnHover: true, icon: pinIcon(s) });
     m.shop = s;
     m.bindPopup(() => popupHtml(s), { maxWidth: 310, minWidth: 260, autoPanPaddingTopLeft: [16, 70], autoPanPaddingBottomRight: [16, 20] });
@@ -83,14 +94,24 @@ function buildMarkers() {
     cluster.addLayer(m);
   });
 }
-function refreshPins() { SHOPS.forEach(s => MARKERS[s.id]?.setIcon(pinIcon(s))); cluster.refreshClusters(); }
+function refreshPins() { buildMarkers(); }
+function computeTop() {
+  TOP.clear();
+  const vis = VIS();
+  REGIONS.forEach(rg => {
+    const scored = vis.filter(s => s.region === rg && ps(s) != null);
+    if (!scored.length) return;
+    const max = Math.max(...scored.map(ps));
+    scored.filter(s => ps(s) === max).forEach(s => TOP.add(s.id));
+  });
+}
 
 // ---------- Popup ----------
 const IS_APPLE = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent) && "ontouchend" in document;
 const PIN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>';
 const NAV_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.7 2.3a1 1 0 0 0-1.1-.2l-18 8a1 1 0 0 0 .1 1.9l7.4 2 2 7.4a1 1 0 0 0 1.9.1l8-18a1 1 0 0 0-.3-1.2z"/></svg>';
 function mapLinks(s) {
-  const q = encodeURIComponent(`${s.name}, ${s.town}, New Zealand`);
+  const q = encodeURIComponent(`${s.name}, ${s.address || s.town}, New Zealand`);
   const links = [
     `<a class="maplink" href="https://www.google.com/maps/search/?api=1&query=${q}" target="_blank" rel="noopener">${PIN_SVG}Google Maps</a>`,
     `<a class="maplink go" href="https://www.google.com/maps/dir/?api=1&destination=${q}" target="_blank" rel="noopener">${NAV_SVG}Directions</a>`
@@ -115,10 +136,10 @@ function popupHtml(s) {
   const monOrder = mon ? orderText(mon) : "";
   return `<div class="pop" data-id="${esc(s.id)}">
     <h3>${esc(s.name)}${TOP.has(s.id) ? '<span class="crown" title="Monaco\'s top pick in region">★</span>' : ""}</h3>
-    <p class="where">${esc(s.town)} · ${esc(s.region)}</p>
+    <p class="where">${s.address ? esc(s.address) : esc(s.town)} · ${esc(s.region)}</p>
     ${mapLinks(s)}
     <div class="trio">
-      <div><span>Monaco</span><b>${fmt1(s.score)}</b></div>
+      <div><span>Monaco</span><b>${fmt1(s.score)}</b>${s.score == null ? "<em>not tried yet</em>" : ""}</div>
       <div><span>Everyone</span><b>${st ? fmt1(st.avg) : "–"}</b><em>${st ? st.n + (st.n === 1 ? " rating" : " ratings") : "no ratings yet"}</em></div>
       <div><span>You</span><b>${mine ? fmt1(num(mine.score)) : "–"}</b></div>
     </div>
@@ -199,7 +220,7 @@ async function adminDelete(id, s) {
   const { data: row } = await sb.from("ratings").select("photo_url").eq("id", id).maybeSingle();
   const { error } = await sb.from("ratings").delete().eq("id", id);
   if (!error && row?.photo_url) await removePhotoFile(row.photo_url);
-  if (!error) { await loadStats(); render(); refreshPopup(s); }
+  if (!error) { await loadStats(); render(); if (mode === "discover") { refreshPins(); openShop(s.id); } else refreshPopup(s); }
 }
 
 function openShop(id) {
@@ -325,6 +346,7 @@ $("rate-form").addEventListener("submit", async ev => {
   if (oldPhoto && oldPhoto !== data.photo_url) removePhotoFile(oldPhoto);
   if (profile?.is_admin) { MON[s.id] = data; applyMonaco(); }
   await loadStats();
+  refreshPins();
   $("rate").close();
   render();
   openShop(s.id);
@@ -337,6 +359,7 @@ $("rate-delete").onclick = async () => {
   delete MINE[s.id];
   if (profile?.is_admin) { delete MON[s.id]; applyMonaco(); }
   await loadStats();
+  refreshPins();
   $("rate").close();
   render();
 };
@@ -347,49 +370,63 @@ function rowHtml(s) {
   const bits = [esc(s.town)];
   if (st) bits.push(`<span class="comm">Everyone ${fmt1(st.avg)} (${st.n})</span>`);
   if (mine && !profile?.is_admin) bits.push(`<span class="mine">You ${fmt1(num(mine.score))}</span>`);
-  const redo = profile?.is_admin && !MON[s.id] ? '<span class="badge">re-rate</span>' : "";
+  if (mode === "discover" && isMon(s) && s.score != null) bits.push(`<span class="mine">Monaco ${fmt1(s.score)}</span>`);
+  if (mode === "discover" && !st && !isMon(s)) bits.push(`<span class="comm">No reviews yet</span>`);
+  const redo = mode === "monaco" && profile?.is_admin && s.source === "monaco" && !MON[s.id] ? '<span class="badge">re-rate</span>' : "";
+  const added = s.source === "user" ? '<span class="badge new">new</span>' : "";
+  const v = ps(s);
   return `<button class="row" data-id="${esc(s.id)}">
-    <span class="info"><span class="name">${esc(s.name)}${TOP.has(s.id) ? '<span class="crown" aria-label="Top pick">★</span>' : ""}${redo}</span>
+    <span class="info"><span class="name">${esc(s.name)}${TOP.has(s.id) ? '<span class="crown" aria-label="Top pick">★</span>' : ""}${redo}${added}</span>
     <span class="where">${bits.join(" · ")}</span></span>
-    <span class="score tier-${tier(s.score)}">${fmt(s.score)}</span></button>`;
+    <span class="score tier-${tier(v)}">${v == null ? "–" : fmt(v)}</span></button>`;
 }
-function presentRegions() { return REGIONS.filter(r => SHOPS.some(s => s.region === r)); }
+function presentRegions() { const v = VIS(); return REGIONS.filter(r => v.some(s => s.region === r)); }
 
 function render() {
-  const inRegion = SHOPS.filter(s => activeRegion === "All" || s.region === activeRegion);
-  const scored = inRegion.filter(s => s.score != null);
-  const best = scored.reduce((a, b) => (b.score > (a?.score ?? -1) ? b : a), null);
-  const avg = scored.reduce((t, s) => t + s.score, 0) / (scored.length || 1);
-  $("stats").innerHTML = `
+  const vis = VIS();
+  if (activeRegion !== "All" && !vis.some(s => s.region === activeRegion)) activeRegion = "All";
+  const inRegion = vis.filter(s => activeRegion === "All" || s.region === activeRegion);
+  const scored = inRegion.filter(s => ps(s) != null);
+  const best = scored.reduce((a, b) => (ps(b) > (a ? ps(a) : -1) ? b : a), null);
+  const avg = scored.reduce((t, s) => t + ps(s), 0) / (scored.length || 1);
+  $("mode-monaco").setAttribute("aria-selected", String(mode === "monaco"));
+  $("mode-discover").setAttribute("aria-selected", String(mode === "discover"));
+  $("discover-bar").hidden = mode !== "discover";
+  $("show-mon").checked = showMon;
+  $("sort").querySelector('[value="score"]').textContent = mode === "discover" ? "Top rated" : "Monaco's top rated";
+  $("stats").innerHTML = mode === "monaco" ? `
     <div class="stat"><b>${inRegion.length}</b><span>shops tried</span></div>
     <div class="stat"><b>${scored.length ? avg.toFixed(1) : "–"}</b><span>Monaco's average</span></div>
-    <div class="stat best"><b title="${esc(best?.name)}">${best ? esc(best.name) : "–"}</b><span>top pick ${best ? fmt1(best.score) + "/10" : ""}</span></div>`;
+    <div class="stat best"><b title="${esc(best?.name)}">${best ? esc(best.name) : "–"}</b><span>top pick ${best ? fmt1(ps(best)) + "/10" : ""}</span></div>` : `
+    <div class="stat"><b>${inRegion.length}</b><span>kebab shops</span></div>
+    <div class="stat"><b>${inRegion.filter(s => STATS[s.id]).length}</b><span>rated by the crew</span></div>
+    <div class="stat best"><b>${inRegion.filter(s => ps(s) == null).length}</b><span>need a first review</span></div>`;
 
   $("chips").innerHTML = ["All", ...presentRegions()].map(r => {
-    const n = r === "All" ? SHOPS.length : SHOPS.filter(s => s.region === r).length;
+    const n = r === "All" ? vis.length : vis.filter(s => s.region === r).length;
     return `<button class="chip" data-region="${esc(r)}" aria-pressed="${r === activeRegion}">${r === "All" ? "All NZ" : esc(r)}<small>${n}</small></button>`;
   }).join("");
 
   $("tools").hidden = view !== "all";
   let html = "";
-  if (profile?.is_admin) {
-    const left = SHOPS.filter(s => !MON[s.id]).length;
+  if (profile?.is_admin && mode === "monaco") {
+    const left = SHOPS.filter(s => s.source === "monaco" && !MON[s.id]).length;
     html += `<div class="adminbar"><span>${left ? `<strong>${left}</strong> shops still need your breakdown` : "All your shops have breakdowns"}</span>${left ? `<button class="btn ghost" type="button" id="todo">${todoOnly ? "Show all" : "Show them"}</button>` : ""}</div>`;
   }
   if (view === "best" && !todoOnly) {
     const regs = activeRegion === "All" ? presentRegions() : [activeRegion];
     regs.forEach(rg => {
-      const list = SHOPS.filter(s => s.region === rg && s.score != null).sort((a, b) => b.score - a.score).slice(0, activeRegion === "All" ? 1 : 3);
+      const list = vis.filter(s => s.region === rg && ps(s) != null).sort((a, b) => ps(b) - ps(a)).slice(0, activeRegion === "All" ? 1 : 3);
       if (list.length) html += `<div class="region-head">${esc(rg)}</div>` + list.map(rowHtml).join("");
     });
   } else {
     const q = $("search").value.trim().toLowerCase();
     let list = inRegion.filter(s => !q || (s.name + " " + s.town).toLowerCase().includes(q));
-    if (todoOnly) list = list.filter(s => !MON[s.id]);
+    if (todoOnly) list = list.filter(s => s.source === "monaco" && !MON[s.id]);
     if (mineOnly) list = list.filter(s => MINE[s.id]);
     if (mineOnly) html += `<div class="adminbar"><span>Showing the <strong>${list.length}</strong> kebabs you've rated</span><button class="btn ghost" type="button" id="mine-off">Show all</button></div>`;
     const cmp = {
-      score: (a, b) => (b.score ?? -1) - (a.score ?? -1),
+      score: (a, b) => (ps(b) ?? -1) - (ps(a) ?? -1),
       community: (a, b) => (STATS[b.id]?.avg ?? -1) - (STATS[a.id]?.avg ?? -1),
       north: (a, b) => b.lat - a.lat,
       az: (a, b) => a.name.localeCompare(b.name)
@@ -562,17 +599,10 @@ $("profile-form").addEventListener("submit", async ev => {
 // ---------- Data ----------
 function applyMonaco() {
   SHOPS.forEach(s => { s.score = MON[s.id] ? num(MON[s.id].score) : s.legacy; });
-  TOP.clear();
-  REGIONS.forEach(rg => {
-    const scored = SHOPS.filter(s => s.region === rg && s.score != null);
-    if (!scored.length) return;
-    const max = Math.max(...scored.map(s => s.score));
-    scored.filter(s => s.score === max).forEach(s => TOP.add(s.id));
-  });
   refreshPins();
 }
 async function loadShops() {
-  const { data, error } = await sb.from("shops").select("id,name,town,region,lat,lng,monaco_score").eq("active", true);
+  const { data, error } = await sb.from("shops").select("id,name,town,region,lat,lng,monaco_score,source,address").eq("active", true);
   if (error) throw error;
   SHOPS = data.map(r => ({ ...r, legacy: num(r.monaco_score), score: num(r.monaco_score) }));
 }
@@ -692,15 +722,92 @@ $("search").addEventListener("input", render);
 $("sort").addEventListener("change", render);
 $("reset").onclick = () => { activeRegion = "All"; render(); flyTo("All"); map.closePopup(); };
 
+// ---------- Discover ----------
+function setMode(m) {
+  mode = m; todoOnly = false; mineOnly = false;
+  $("fine").textContent = m === "monaco"
+    ? "Pin colours and numbers are Monaco's scores. Pins sit in the right town or suburb, not always on the exact street."
+    : "Pins show everyone's average score. Shops with an M are Monaco's, showing his score. Dashed pins have no reviews yet, so be the first.";
+  map.closePopup();
+  refreshPins();
+  render();
+  try { localStorage.setItem("kebab.mode", m); } catch {}
+}
+$("mode-monaco").onclick = () => setMode("monaco");
+$("mode-discover").onclick = () => setMode("discover");
+$("show-mon").addEventListener("change", e => { showMon = e.target.checked; map.closePopup(); refreshPins(); render(); });
+
+// Add a missing shop
+let newLoc = null, picking = false, pickMarker = null;
+$("as-region").innerHTML = REGIONS.map(r => `<option>${esc(r)}</option>`).join("");
+function nearestRegion(lat, lng) {
+  let best = null, d = Infinity;
+  SHOPS.forEach(s => { const dd = (s.lat - lat) ** 2 + (s.lng - lng) ** 2; if (dd < d) { d = dd; best = s; } });
+  return best?.region;
+}
+function setNewLoc(lat, lng, how) {
+  newLoc = { lat: Math.round(lat * 1e5) / 1e5, lng: Math.round(lng * 1e5) / 1e5 };
+  const r = nearestRegion(lat, lng); if (r) $("as-region").value = r;
+  $("as-loc").textContent = `Location set (${how}).`;
+  if (pickMarker) map.removeLayer(pickMarker);
+  pickMarker = L.marker([newLoc.lat, newLoc.lng], { icon: L.divIcon({ className: "", iconSize: [40, 40], iconAnchor: [20, 48], html: '<div class="pin fresh"><b>+</b></div>' }) }).addTo(map);
+}
+function asMsg(text, ok) { $("as-msg").textContent = text; $("as-msg").className = "msg " + (ok ? "ok" : "err"); $("as-msg").hidden = false; }
+$("add-shop").onclick = () => {
+  if (!session) { openAuth("signup"); return; }
+  newLoc = null; $("as-name").value = ""; $("as-town").value = ""; $("as-loc").textContent = "No location set yet.";
+  $("as-msg").hidden = true; $("as-save").disabled = false;
+  if (pickMarker) { map.removeLayer(pickMarker); pickMarker = null; }
+  $("addshop").showModal();
+};
+$("addshop-close").onclick = () => { $("addshop").close(); if (pickMarker) { map.removeLayer(pickMarker); pickMarker = null; } };
+$("as-here").onclick = () => {
+  if (!navigator.geolocation) return asMsg("Your browser can't share your location. Tap it on the map instead.");
+  $("as-loc").textContent = "Finding you…";
+  navigator.geolocation.getCurrentPosition(
+    p => setNewLoc(p.coords.latitude, p.coords.longitude, "your current location"),
+    () => { $("as-loc").textContent = "No location set yet."; asMsg("Couldn't get your location. Tap it on the map instead."); },
+    { enableHighAccuracy: true, timeout: 10000 });
+};
+$("as-pick").onclick = () => {
+  picking = true; $("addshop").close();
+  document.body.classList.add("picking"); $("pickbar").hidden = false;
+  if (window.innerWidth <= 820) document.querySelector(".map-wrap").scrollIntoView({ behavior: "smooth", block: "start" });
+};
+function endPick() { picking = false; document.body.classList.remove("picking"); $("pickbar").hidden = true; $("addshop").showModal(); }
+$("pick-cancel").onclick = endPick;
+map.on("click", e => { if (!picking) return; setNewLoc(e.latlng.lat, e.latlng.lng, "tapped on the map"); endPick(); });
+const slug = s => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
+$("addshop-form").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const name = $("as-name").value.trim(), town = $("as-town").value.trim(), region = $("as-region").value;
+  if (name.length < 2) return asMsg("Add the shop's name.");
+  if (town.length < 2) return asMsg("Add the town or suburb.");
+  if (!newLoc) return asMsg("Set where the shop is, either your location or a tap on the map.");
+  if (newLoc.lat < -47.6 || newLoc.lat > -34 || newLoc.lng < 166 || newLoc.lng > 179) return asMsg("That spot isn't in New Zealand. Try tapping the map again.");
+  const near = SHOPS.find(s => (s.lat - newLoc.lat) ** 2 + (s.lng - newLoc.lng) ** 2 < 0.0004 ** 2 * 4 && slug(s.name) === slug(name));
+  if (near) return asMsg(`${near.name} in ${near.town} is already on the map.`);
+  $("as-save").disabled = true; $("as-save").textContent = "Adding…";
+  const row = { id: `${slug(name + "-" + town)}-${Math.random().toString(36).slice(2, 6)}`, name, town, region, lat: newLoc.lat, lng: newLoc.lng, source: "user", added_by: session.user.id };
+  const { error } = await sb.from("shops").insert(row);
+  $("as-save").textContent = "Add shop";
+  if (error) { console.error(error); $("as-save").disabled = false; return asMsg("Couldn't add the shop. Check your connection and try again."); }
+  SHOPS.push({ ...row, monaco_score: null, legacy: null, score: null });
+  $("addshop").close();
+  if (pickMarker) { map.removeLayer(pickMarker); pickMarker = null; }
+  if (mode !== "discover") setMode("discover"); else { refreshPins(); render(); }
+  openShop(row.id);
+});
+
 // ---------- Start ----------
 (async () => {
   try {
     const { data } = await sb.auth.getSession();
     session = data.session;
     await Promise.all([loadShops(), loadStats(), loadMine(), loadMonaco()]);
-    buildMarkers();
+    try { if (localStorage.getItem("kebab.mode") === "discover") mode = "discover"; } catch {}
     applyMonaco();
-    render();
+    if (mode === "discover") setMode("discover"); else render();
   } catch (err) {
     console.error(err);
     $("list").innerHTML = `<p class="empty">Couldn't load the shops. Check your connection and refresh the page.</p>`;
