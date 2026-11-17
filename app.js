@@ -6,18 +6,45 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const REGIONS = ["Northland","Auckland","Waikato","Bay of Plenty","Gisborne","Taranaki","Manawatū-Whanganui","Hawke's Bay","Wellington","Nelson Tasman","Marlborough","West Coast","Canterbury","Otago","Southland"];
 const CITIES = [["Auckland",-36.85,174.76],["Hamilton",-37.79,175.28],["Tauranga",-37.69,176.17],["Napier",-39.49,176.91],["New Plymouth",-39.06,174.08],["Palmerston North",-40.35,175.61],["Wellington",-41.29,174.78],["Nelson",-41.27,173.28],["Christchurch",-43.53,172.64],["Dunedin",-45.87,170.50],["Queenstown",-45.03,168.66],["Invercargill",-46.41,168.35],["Whangārei",-35.73,174.32],["Gisborne",-38.66,178.02]];
 
+const PARTS = [
+  ["meat", "Meat", "Taste, tenderness, how much you get"],
+  ["sauce", "Sauce", "Flavour and balance"],
+  ["bread", "Bread & wrap", "Fresh, toasted, holds together"],
+  ["value", "Value", "Size for the price"]
+];
+const OPTIONS = {
+  style: [["wrap","Wrap"],["pide","Pide / bread"],["chips","On chips"],["rice","On rice"],["snack_pack","Snack pack"],["plate","Plate"],["other","Other"]],
+  meats: [["lamb","Lamb"],["chicken","Chicken"],["beef","Beef"],["mixed","Mixed"],["falafel","Falafel"],["other","Other"]],
+  sauces: [["garlic","Garlic"],["chilli","Chilli"],["sweet_chilli","Sweet chilli"],["bbq","BBQ"],["mint_yoghurt","Mint yoghurt"],["hummus","Hummus"],["tahini","Tahini"],["tomato","Tomato"],["mayo","Mayo"],["aioli","Aioli"]],
+  salads: [["lettuce","Lettuce"],["tomato","Tomato"],["onion","Onion"],["cucumber","Cucumber"],["cabbage","Cabbage"],["carrot","Carrot"],["olives","Olives"],["jalapenos","Jalapeños"],["pickles","Pickles"],["cheese","Cheese"]]
+};
+const LABEL = Object.fromEntries(Object.entries(OPTIONS).map(([k, v]) => [k, Object.fromEntries(v)]));
+
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const num = v => v == null ? null : Number(v);
 const tier = s => s == null ? "n" : s >= 9 ? "9" : s >= 8 ? "8" : s >= 7 ? "7" : s >= 5 ? "5" : "0";
-const fmt = s => s == null ? "–" : (Number.isInteger(s) ? String(s) : s.toFixed(1));
+const fmt = s => s == null ? "–" : (Math.round(s * 10) / 10).toFixed(1).replace(/\.0$/, "");
+const fmt1 = s => s == null ? "–" : (Math.round(s * 10) / 10).toFixed(1);
+const round1 = v => Math.round(v * 10) / 10;
+
+function orderText(r) {
+  const meats = (r.meats || []).map(m => LABEL.meats[m]).filter(Boolean);
+  const style = r.style ? LABEL.style[r.style] : "";
+  let main = [meats.join(" & "), style ? style.toLowerCase() : ""].filter(Boolean).join(" ");
+  if (main) main = main[0].toUpperCase() + main.slice(1);
+  const sauces = (r.sauces || []).map(x => LABEL.sauces[x]?.toLowerCase()).filter(Boolean);
+  return [main, sauces.length ? sauces.join(", ") + " sauce" : ""].filter(Boolean).join(" · ");
+}
 
 // ---------- State ----------
-let SHOPS = [];             // {id,name,town,region,lat,lng,score,note}
-let STATS = {};             // shop_id -> {avg, n}
-let MINE = {};              // shop_id -> {score, comment}
+let SHOPS = [];        // {id,name,town,region,lat,lng,legacy,score}
+let STATS = {};        // shop_id -> {avg, n, meat, sauce, bread, value}
+let MON = {};          // shop_id -> Monaco's breakdown rating row
+let MINE = {};         // shop_id -> my rating row
+let ADMIN_IDS = [];
 let session = null, profile = null;
-let activeRegion = "All", view = "best";
+let activeRegion = "All", view = "best", todoOnly = false;
 const TOP = new Set();
 const MARKERS = {};
 
@@ -45,53 +72,46 @@ const cluster = L.markerClusterGroup({
 });
 map.addLayer(cluster);
 
+const pinIcon = s => L.divIcon({ className: "", iconSize: [34, 34], iconAnchor: [17, 41], popupAnchor: [0, -38], html: `<div class="drop"><div class="pin tier-${tier(s.score)}${TOP.has(s.id) ? " top" : ""}"><b>${s.score == null ? "?" : fmt(s.score)}</b></div></div>` });
 function buildMarkers() {
   cluster.clearLayers();
   SHOPS.forEach(s => {
-    const m = L.marker([s.lat, s.lng], {
-      title: `${s.name}, ${s.town}`, riseOnHover: true,
-      icon: L.divIcon({ className: "", iconSize: [34, 34], iconAnchor: [17, 41], popupAnchor: [0, -38], html: `<div class="drop"><div class="pin tier-${tier(s.score)}${TOP.has(s.id) ? " top" : ""}"><b>${s.score == null ? "?" : fmt(s.score)}</b></div></div>` })
-    });
+    const m = L.marker([s.lat, s.lng], { title: `${s.name}, ${s.town}`, riseOnHover: true, icon: pinIcon(s) });
     m.shop = s;
-    m.bindPopup(() => popupHtml(s), { maxWidth: 300, minWidth: 250, autoPanPadding: [20, 60] });
+    m.bindPopup(() => popupHtml(s), { maxWidth: 310, minWidth: 260, autoPanPadding: [20, 60] });
     MARKERS[s.id] = m;
     cluster.addLayer(m);
   });
 }
+function refreshPins() { SHOPS.forEach(s => MARKERS[s.id]?.setIcon(pinIcon(s))); cluster.refreshClusters(); }
 
 // ---------- Popup ----------
-function verdict(s, v) {
-  if (v == null) return "";
-  if (s.score == null) return "Monaco hasn't scored this one yet.";
-  const d = v - s.score;
-  if (d === 0) return "Spot on. You and Monaco agree.";
-  return d > 0 ? `You rate it ${fmt(Math.abs(d))} higher than Monaco.` : `You rate it ${fmt(Math.abs(d))} lower than Monaco.`;
+function partsHtml(s) {
+  const mon = MON[s.id], st = STATS[s.id];
+  if (!mon && !st) return "";
+  return `<div class="parts"><span class="ph"></span><span></span><span class="ph">Monaco</span><span class="ph">All</span>
+    ${PARTS.map(([k, label]) => {
+      const mv = mon ? num(mon[k]) : null, av = st ? st[k] : null;
+      return `<span>${label}</span><span class="bar"><i style="width:${((mv ?? av ?? 0) * 10).toFixed(0)}%"></i></span><b>${fmt1(mv)}</b><em>${fmt1(av)}</em>`;
+    }).join("")}</div>`;
 }
 function popupHtml(s) {
-  const st = STATS[s.id], mine = MINE[s.id];
-  const yours = mine ? fmt(mine.score) : "–";
-  let rate;
-  if (!session) {
-    rate = `<button class="btn wide" type="button" data-act="login">Log in to add your score</button>`;
-  } else {
-    const v = mine ? mine.score : 7;
-    rate = `<label for="r-${s.id}">${mine ? "Your score" : "Add your score"}</label>
-      <div class="sliderline"><input id="r-${s.id}" type="range" min="0" max="10" step="0.5" value="${v}"><output>${fmt(v)}</output></div>
-      <textarea id="c-${s.id}" maxlength="280" placeholder="What was it like? (optional)">${esc(mine?.comment || "")}</textarea>
-      <div class="actions"><button class="btn" type="button" data-act="save">${mine ? "Update" : "Save score"}</button>
-      ${mine ? '<button class="btn ghost" type="button" data-act="del">Remove</button>' : ""}
-      <span class="status" aria-live="polite"></span></div>
-      <p class="verdict">${verdict(s, mine?.score)}</p>`;
-  }
+  const st = STATS[s.id], mine = MINE[s.id], mon = MON[s.id];
+  const action = !session
+    ? `<button class="btn wide" type="button" data-act="login">Log in to rate this kebab</button>`
+    : `<button class="btn wide" type="button" data-act="rate">${mine ? "Edit my rating" : "Rate this kebab"}</button>`;
+  const monOrder = mon ? orderText(mon) : "";
   return `<div class="pop" data-id="${esc(s.id)}">
     <h3>${esc(s.name)}${TOP.has(s.id) ? '<span class="crown" title="Monaco\'s top pick in region">★</span>' : ""}</h3>
     <p class="where">${esc(s.town)} · ${esc(s.region)}</p>
     <div class="trio">
-      <div><span>Monaco</span><b>${fmt(s.score)}</b></div>
-      <div><span>Everyone</span><b>${st ? fmt(st.avg) : "–"}</b><em>${st ? st.n + (st.n === 1 ? " rating" : " ratings") : "no ratings yet"}</em></div>
-      <div><span>You</span><b class="mine-val">${yours}</b></div>
+      <div><span>Monaco</span><b>${fmt1(s.score)}</b></div>
+      <div><span>Everyone</span><b>${st ? fmt1(st.avg) : "–"}</b><em>${st ? st.n + (st.n === 1 ? " rating" : " ratings") : "no ratings yet"}</em></div>
+      <div><span>You</span><b>${mine ? fmt1(num(mine.score)) : "–"}</b></div>
     </div>
-    ${rate}
+    ${partsHtml(s)}
+    ${monOrder ? `<p class="where">Monaco had: ${esc(monOrder)}</p>` : ""}
+    ${action}
     <div class="reviews" hidden></div>
   </div>`;
 }
@@ -108,46 +128,27 @@ function refreshPopup(s) {
   openPopup.setContent(popupHtml(s)); openPopup.update();
   loadReviews(s, openPopup);
 }
-// Delegated handlers so they survive popup content refreshes
-document.getElementById("map").addEventListener("input", ev => {
-  if (ev.target.matches(".pop input[type=range]")) ev.target.parentElement.querySelector("output").textContent = fmt(parseFloat(ev.target.value));
-});
 document.getElementById("map").addEventListener("click", async ev => {
   const btn = ev.target.closest(".pop [data-act]"); if (!btn) return;
-  const el = btn.closest(".pop"), s = SHOPS.find(x => x.id === el.dataset.id), act = btn.dataset.act;
-  if (act === "login") { openAuth("signup"); return; }
-  if (act === "delrev") { await adminDelete(btn.closest("[data-rid]").dataset.rid, s); return; }
-  const status = el.querySelector(".status"), btns = el.querySelectorAll(".actions .btn");
-  btns.forEach(b => b.disabled = true); status.textContent = "Saving…";
-  try {
-    if (act === "save") {
-      const score = parseFloat(el.querySelector("input[type=range]").value);
-      const comment = el.querySelector("textarea").value.trim() || null;
-      const { error } = await sb.from("ratings").upsert({ shop_id: s.id, user_id: session.user.id, score, comment }, { onConflict: "shop_id,user_id" });
-      if (error) throw error;
-      MINE[s.id] = { score, comment };
-    } else if (act === "del") {
-      const { error } = await sb.from("ratings").delete().eq("shop_id", s.id).eq("user_id", session.user.id);
-      if (error) throw error;
-      delete MINE[s.id];
-    }
-    await loadStats();
-    render();
-    refreshPopup(s);
-  } catch (err) {
-    status.textContent = "Couldn't save. Check your connection and try again.";
-    btns.forEach(b => b.disabled = false);
-    console.error(err);
-  }
+  const s = SHOPS.find(x => x.id === btn.closest(".pop").dataset.id), act = btn.dataset.act;
+  if (act === "login") openAuth("signup");
+  else if (act === "rate") openRate(s);
+  else if (act === "delrev") adminDelete(btn.closest("[data-rid]").dataset.rid, s);
 });
 
 async function loadReviews(s, popup) {
-  const { data, error } = await sb.from("ratings").select("id, score, comment, user_id, updated_at, profiles(display_name)").eq("shop_id", s.id).order("updated_at", { ascending: false }).limit(20);
+  const { data, error } = await sb.from("ratings").select("id, score, comment, style, meats, sauces, user_id, updated_at, profiles(display_name, is_admin)").eq("shop_id", s.id).order("updated_at", { ascending: false }).limit(20);
   const box = popup.getElement()?.querySelector(".reviews");
-  if (!box || error || !data?.length) return;
-  box.innerHTML = data.map(r => `<div class="rev" data-rid="${r.id}"><b>${esc(r.profiles?.display_name || "Someone")}</b> · ${fmt(num(r.score))}/10
-    ${profile?.is_admin && r.user_id !== session?.user.id ? ' <button class="auth-switch" type="button" data-act="delrev">remove</button>' : ""}
-    ${r.comment ? `<q>${esc(r.comment)}</q>` : ""}</div>`).join("");
+  if (!box || error) return;
+  const rows = (data || []).filter(r => !r.profiles?.is_admin);
+  if (!rows.length) return;
+  box.innerHTML = rows.map(r => {
+    const order = orderText(r);
+    return `<div class="rev" data-rid="${r.id}"><b>${esc(r.profiles?.display_name || "Someone")}</b> · ${fmt1(num(r.score))}/10
+      ${profile?.is_admin && r.user_id !== session?.user.id ? ' <button class="auth-switch" type="button" data-act="delrev">remove</button>' : ""}
+      ${order ? `<span class="order">${esc(order)}</span>` : ""}
+      ${r.comment ? `<q>${esc(r.comment)}</q>` : ""}</div>`;
+  }).join("");
   box.hidden = false;
 }
 async function adminDelete(id, s) {
@@ -166,14 +167,115 @@ function flyTo(region) {
   map.flyToBounds(region === "All" ? NZ_BOUNDS : L.latLngBounds(pts), { padding: [50, 50], maxZoom: 11, duration: 0.9 });
 }
 
+// ---------- Rating sheet ----------
+let rateShop = null;
+const draft = { style: null, meats: [], sauces: [], salads: [], meat: 7, sauce: 7, bread: 7, value: 7 };
+
+function renderPills() {
+  document.querySelectorAll("#rate .pills").forEach(box => {
+    const f = box.dataset.field, single = box.hasAttribute("data-single");
+    box.innerHTML = OPTIONS[f].map(([v, l]) => {
+      const on = single ? draft[f] === v : draft[f].includes(v);
+      return `<button type="button" class="pill" data-v="${v}" aria-pressed="${on}">${l}</button>`;
+    }).join("");
+  });
+}
+function renderScores() {
+  $("scores").innerHTML = PARTS.map(([k, label, hint]) => `
+    <div class="sc">
+      <span class="lab">${label}<small>${hint}</small></span>
+      <span class="val"><button type="button" class="step" data-k="${k}" data-d="-0.1" aria-label="${label} down 0.1">−</button><output id="o-${k}">${fmt1(draft[k])}</output><button type="button" class="step" data-k="${k}" data-d="0.1" aria-label="${label} up 0.1">+</button></span>
+      <input type="range" id="s-${k}" data-k="${k}" min="0.1" max="10" step="0.1" value="${draft[k]}" aria-label="${label} score">
+    </div>`).join("");
+  updateOverall();
+}
+function updateOverall() {
+  const avg = (draft.meat + draft.sauce + draft.bread + draft.value) / 4;
+  $("overall").textContent = fmt1(round1(avg));
+}
+function setScore(k, v) {
+  draft[k] = Math.min(10, Math.max(0.1, round1(v)));
+  $("o-" + k).textContent = fmt1(draft[k]);
+  $("s-" + k).value = draft[k];
+  updateOverall();
+}
+function openRate(s) {
+  rateShop = s;
+  const mine = MINE[s.id];
+  Object.assign(draft, mine
+    ? { style: mine.style, meats: [...(mine.meats || [])], sauces: [...(mine.sauces || [])], salads: [...(mine.salads || [])], meat: num(mine.meat), sauce: num(mine.sauce), bread: num(mine.bread), value: num(mine.value) }
+    : { style: null, meats: [], sauces: [], salads: [], meat: 7, sauce: 7, bread: 7, value: 7 });
+  $("rate-title").textContent = mine ? "Edit your rating" : "Rate this kebab";
+  $("rate-where").textContent = `${s.name} · ${s.town}`;
+  $("rate-comment").value = mine?.comment || "";
+  $("comment-wrap").open = !!mine?.comment;
+  document.querySelector("#rate details.more").open = !!(mine?.salads?.length);
+  $("rate-delete").hidden = !mine;
+  $("rate-msg").hidden = true;
+  $("rate-save").disabled = false;
+  $("rate-save").textContent = mine ? "Update rating" : "Save rating";
+  renderPills(); renderScores();
+  map.closePopup();
+  $("rate").showModal();
+}
+$("rate").addEventListener("click", e => {
+  const pill = e.target.closest(".pill");
+  if (pill) {
+    const box = pill.parentElement, f = box.dataset.field, v = pill.dataset.v;
+    if (box.hasAttribute("data-single")) draft[f] = draft[f] === v ? null : v;
+    else draft[f] = draft[f].includes(v) ? draft[f].filter(x => x !== v) : [...draft[f], v];
+    renderPills(); return;
+  }
+  const step = e.target.closest(".step");
+  if (step) { setScore(step.dataset.k, draft[step.dataset.k] + parseFloat(step.dataset.d)); return; }
+  if (e.target === $("rate")) $("rate").close(); // tap outside the card
+});
+$("rate").addEventListener("input", e => { if (e.target.matches("input[type=range]")) setScore(e.target.dataset.k, parseFloat(e.target.value)); });
+$("rate-close").onclick = () => $("rate").close();
+
+$("rate-form").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const s = rateShop, existing = MINE[s.id];
+  const fields = { meat: draft.meat, sauce: draft.sauce, bread: draft.bread, value: draft.value, style: draft.style, meats: draft.meats, sauces: draft.sauces, salads: draft.salads, comment: $("rate-comment").value.trim() || null };
+  $("rate-save").disabled = true; $("rate-save").textContent = "Saving…";
+  const q = existing
+    ? sb.from("ratings").update(fields).eq("shop_id", s.id).eq("user_id", session.user.id).select().single()
+    : sb.from("ratings").insert({ ...fields, shop_id: s.id, user_id: session.user.id }).select().single();
+  const { data, error } = await q;
+  if (error) {
+    console.error(error);
+    $("rate-msg").textContent = "Couldn't save your rating. Check your connection and try again.";
+    $("rate-msg").className = "msg err"; $("rate-msg").hidden = false;
+    $("rate-save").disabled = false; $("rate-save").textContent = existing ? "Update rating" : "Save rating";
+    return;
+  }
+  MINE[s.id] = data;
+  if (profile?.is_admin) { MON[s.id] = data; applyMonaco(); }
+  await loadStats();
+  $("rate").close();
+  render();
+  openShop(s.id);
+});
+$("rate-delete").onclick = async () => {
+  const s = rateShop;
+  const { error } = await sb.from("ratings").delete().eq("shop_id", s.id).eq("user_id", session.user.id);
+  if (error) { $("rate-msg").textContent = "Couldn't remove it. Try again."; $("rate-msg").className = "msg err"; $("rate-msg").hidden = false; return; }
+  delete MINE[s.id];
+  if (profile?.is_admin) { delete MON[s.id]; applyMonaco(); }
+  await loadStats();
+  $("rate").close();
+  render();
+};
+
 // ---------- Panel ----------
 function rowHtml(s) {
   const st = STATS[s.id], mine = MINE[s.id];
   const bits = [esc(s.town)];
-  if (st) bits.push(`<span class="comm">Everyone ${fmt(st.avg)} (${st.n})</span>`);
-  if (mine) bits.push(`<span class="mine">You ${fmt(mine.score)}</span>`);
+  if (st) bits.push(`<span class="comm">Everyone ${fmt1(st.avg)} (${st.n})</span>`);
+  if (mine && !profile?.is_admin) bits.push(`<span class="mine">You ${fmt1(num(mine.score))}</span>`);
+  const redo = profile?.is_admin && !MON[s.id] ? '<span class="badge">re-rate</span>' : "";
   return `<button class="row" data-id="${esc(s.id)}">
-    <span class="info"><span class="name">${esc(s.name)}${TOP.has(s.id) ? '<span class="crown" aria-label="Top pick">★</span>' : ""}</span>
+    <span class="info"><span class="name">${esc(s.name)}${TOP.has(s.id) ? '<span class="crown" aria-label="Top pick">★</span>' : ""}${redo}</span>
     <span class="where">${bits.join(" · ")}</span></span>
     <span class="score tier-${tier(s.score)}">${fmt(s.score)}</span></button>`;
 }
@@ -187,7 +289,7 @@ function render() {
   $("stats").innerHTML = `
     <div class="stat"><b>${inRegion.length}</b><span>shops tried</span></div>
     <div class="stat"><b>${scored.length ? avg.toFixed(1) : "–"}</b><span>Monaco's average</span></div>
-    <div class="stat best"><b title="${esc(best?.name)}">${best ? esc(best.name) : "–"}</b><span>top pick ${best ? fmt(best.score) + "/10" : ""}</span></div>`;
+    <div class="stat best"><b title="${esc(best?.name)}">${best ? esc(best.name) : "–"}</b><span>top pick ${best ? fmt1(best.score) + "/10" : ""}</span></div>`;
 
   $("chips").innerHTML = ["All", ...presentRegions()].map(r => {
     const n = r === "All" ? SHOPS.length : SHOPS.filter(s => s.region === r).length;
@@ -196,7 +298,11 @@ function render() {
 
   $("tools").hidden = view !== "all";
   let html = "";
-  if (view === "best") {
+  if (profile?.is_admin) {
+    const left = SHOPS.filter(s => !MON[s.id]).length;
+    html += `<div class="adminbar"><span>${left ? `<strong>${left}</strong> shops still need your breakdown` : "All your shops have breakdowns"}</span>${left ? `<button class="btn ghost" type="button" id="todo">${todoOnly ? "Show all" : "Show them"}</button>` : ""}</div>`;
+  }
+  if (view === "best" && !todoOnly) {
     const regs = activeRegion === "All" ? presentRegions() : [activeRegion];
     regs.forEach(rg => {
       const list = SHOPS.filter(s => s.region === rg && s.score != null).sort((a, b) => b.score - a.score).slice(0, activeRegion === "All" ? 1 : 3);
@@ -204,16 +310,16 @@ function render() {
     });
   } else {
     const q = $("search").value.trim().toLowerCase();
-    const list = inRegion.filter(s => !q || (s.name + " " + s.town).toLowerCase().includes(q));
-    const sort = $("sort").value;
+    let list = inRegion.filter(s => !q || (s.name + " " + s.town).toLowerCase().includes(q));
+    if (todoOnly) list = list.filter(s => !MON[s.id]);
     const cmp = {
       score: (a, b) => (b.score ?? -1) - (a.score ?? -1),
       community: (a, b) => (STATS[b.id]?.avg ?? -1) - (STATS[a.id]?.avg ?? -1),
       north: (a, b) => b.lat - a.lat,
       az: (a, b) => a.name.localeCompare(b.name)
-    }[sort];
+    }[todoOnly ? "north" : $("sort").value];
     list.sort(cmp);
-    html = list.length ? list.map(rowHtml).join("") : `<p class="empty">No shops match "${esc(q)}".</p>`;
+    html += list.length ? list.map(rowHtml).join("") : `<p class="empty">${q ? `No shops match "${esc(q)}".` : "Nothing here."}</p>`;
   }
   $("list").innerHTML = html || `<p class="empty">No shops here yet.</p>`;
   renderCompare();
@@ -222,35 +328,45 @@ function render() {
 
 function renderCompare() {
   if (!session) {
-    $("compare").innerHTML = `<h2>You vs Monaco</h2><p>Make a free account, score the shops you've been to, and see where you agree with Monaco and where you'd argue about it.</p><button class="btn" type="button" data-open-auth="signup">Create account</button>`;
-    return;
+    $("compare").innerHTML = `<h2>You vs Monaco</h2><p>Make a free account, rate the kebabs you've had, and see where you agree with Monaco and where you'd argue about it.</p><button class="btn" type="button" data-open-auth="signup">Create account</button>`;
+    $("compare").hidden = false; return;
   }
+  if (profile?.is_admin) { $("compare").hidden = true; return; }
+  $("compare").hidden = false;
   const rated = SHOPS.filter(s => MINE[s.id] && s.score != null);
   if (!rated.length) {
-    $("compare").innerHTML = `<h2>You vs Monaco</h2><p>Tap any pin and add your score. Once you've rated a few, you'll see how your taste compares.</p>`;
+    $("compare").innerHTML = `<h2>You vs Monaco</h2><p>Tap any pin and rate the kebab. Once you've done a few, you'll see how your taste compares.</p>`;
     return;
   }
-  const gap = rated.reduce((t, s) => t + (MINE[s.id].score - s.score), 0) / rated.length;
-  const agree = rated.filter(s => Math.abs(MINE[s.id].score - s.score) <= 0.5).length;
-  const far = rated.reduce((a, b) => Math.abs(MINE[b.id].score - b.score) > Math.abs(MINE[a.id].score - a.score) ? b : a);
-  const fd = MINE[far.id].score - far.score;
+  const my = s => num(MINE[s.id].score);
+  const gap = rated.reduce((t, s) => t + (my(s) - s.score), 0) / rated.length;
+  const agree = rated.filter(s => Math.abs(my(s) - s.score) <= 0.5).length;
+  const far = rated.reduce((a, b) => Math.abs(my(b) - b.score) > Math.abs(my(a) - a.score) ? b : a);
+  const fd = round1(my(far) - far.score);
+  // Which part do you rate most differently (only shops where Monaco has a breakdown)
+  const withParts = rated.filter(s => MON[s.id]);
+  let partLine = "";
+  if (withParts.length >= 2) {
+    const diffs = PARTS.map(([k, label]) => [label, withParts.reduce((t, s) => t + (num(MINE[s.id][k]) - num(MON[s.id][k])), 0) / withParts.length]);
+    const [label, d] = diffs.reduce((a, b) => Math.abs(b[1]) > Math.abs(a[1]) ? b : a);
+    if (Math.abs(d) >= 0.3) partLine = `<p>You're ${d > 0 ? "kinder" : "tougher"} than Monaco on <strong>${label.toLowerCase()}</strong>, by ${fmt1(Math.abs(round1(d)))} on average.</p>`;
+  }
   $("compare").innerHTML = `<h2>You vs Monaco</h2>
-    <p>You've scored <strong>${rated.length}</strong> of his shops and agree (within half a point) on <strong>${agree}</strong>.</p>
-    <p>On average you rate <strong>${Math.abs(gap) < .05 ? "the same as him" : fmt(Math.abs(Math.round(gap * 10) / 10)) + (gap > 0 ? " higher" : " lower")}</strong>.</p>
-    <p>${fd === 0 ? "No big disagreements yet." : `Biggest disagreement: <strong>${esc(far.name)}</strong>, ${esc(far.town)} (you ${fmt(MINE[far.id].score)}, Monaco ${fmt(far.score)}).`}</p>`;
+    <p>You've rated <strong>${rated.length}</strong> of his shops and agree (within half a point) on <strong>${agree}</strong>.</p>
+    <p>On average you score <strong>${Math.abs(gap) < .05 ? "the same as him" : fmt1(Math.abs(round1(gap))) + (gap > 0 ? " higher" : " lower")}</strong>.</p>
+    ${partLine}
+    <p>${fd === 0 ? "No big disagreements yet." : `Biggest disagreement: <strong>${esc(far.name)}</strong>, ${esc(far.town)} (you ${fmt1(my(far))}, Monaco ${fmt1(far.score)}).`}</p>`;
 }
 
 function renderAccount() {
   $("account").innerHTML = session
     ? `<span class="who">Signed in as <b>${esc(profile?.display_name || session.user.email)}</b>${profile?.is_admin ? " · admin" : ""}</span><button class="btn ghost" type="button" id="logout">Log out</button>`
-    : `<span class="who">Score shops and compare with Monaco</span><button class="btn" type="button" data-open-auth="login">Log in</button>`;
+    : `<span class="who">Rate kebabs and compare with Monaco</span><button class="btn" type="button" data-open-auth="login">Log in</button>`;
 }
 
 // ---------- Data ----------
-async function loadShops() {
-  const { data, error } = await sb.from("shops").select("id,name,town,region,lat,lng,monaco_score,note").eq("active", true);
-  if (error) throw error;
-  SHOPS = data.map(r => ({ ...r, score: num(r.monaco_score) }));
+function applyMonaco() {
+  SHOPS.forEach(s => { s.score = MON[s.id] ? num(MON[s.id].score) : s.legacy; });
   TOP.clear();
   REGIONS.forEach(rg => {
     const scored = SHOPS.filter(s => s.region === rg && s.score != null);
@@ -258,20 +374,34 @@ async function loadShops() {
     const max = Math.max(...scored.map(s => s.score));
     scored.filter(s => s.score === max).forEach(s => TOP.add(s.id));
   });
+  refreshPins();
+}
+async function loadShops() {
+  const { data, error } = await sb.from("shops").select("id,name,town,region,lat,lng,monaco_score").eq("active", true);
+  if (error) throw error;
+  SHOPS = data.map(r => ({ ...r, legacy: num(r.monaco_score), score: num(r.monaco_score) }));
+}
+async function loadMonaco() {
+  const { data: admins } = await sb.from("profiles").select("id").eq("is_admin", true);
+  ADMIN_IDS = (admins || []).map(a => a.id);
+  MON = {};
+  if (!ADMIN_IDS.length) return;
+  const { data } = await sb.from("ratings").select("*").in("user_id", ADMIN_IDS).order("updated_at", { ascending: true });
+  (data || []).forEach(r => MON[r.shop_id] = r);
 }
 async function loadStats() {
   const { data } = await sb.from("shop_stats").select("*");
   STATS = {};
-  (data || []).forEach(r => STATS[r.shop_id] = { avg: num(r.avg_score), n: r.rating_count });
+  (data || []).forEach(r => STATS[r.shop_id] = { avg: num(r.avg_score), n: r.rating_count, meat: num(r.avg_meat), sauce: num(r.avg_sauce), bread: num(r.avg_bread), value: num(r.avg_value) });
 }
 async function loadMine() {
   MINE = {}; profile = null;
   if (!session) return;
   const [{ data: rows }, { data: prof }] = await Promise.all([
-    sb.from("ratings").select("shop_id, score, comment").eq("user_id", session.user.id),
+    sb.from("ratings").select("*").eq("user_id", session.user.id),
     sb.from("profiles").select("display_name, is_admin").eq("id", session.user.id).maybeSingle()
   ]);
-  (rows || []).forEach(r => MINE[r.shop_id] = { score: num(r.score), comment: r.comment });
+  (rows || []).forEach(r => MINE[r.shop_id] = r);
   profile = prof;
 }
 
@@ -280,8 +410,8 @@ let authMode = "signup";
 function setAuthMode(mode) {
   authMode = mode;
   const t = {
-    signup: ["Join the kebab crew", "Make an account to score shops and see how you stack up against Monaco.", "Create account", "Already have an account?", "Log in"],
-    login: ["Welcome back", "Log in to add and update your scores.", "Log in", "New here?", "Create an account"],
+    signup: ["Join the kebab crew", "Make an account to rate kebabs and see how you stack up against Monaco.", "Create account", "Already have an account?", "Log in"],
+    login: ["Welcome back", "Log in to add and update your ratings.", "Log in", "New here?", "Create an account"],
     forgot: ["Reset your password", "We'll email you a link to set a new password.", "Send reset link", "Remembered it?", "Log in"],
     newpass: ["Set a new password", "Choose a new password for your account.", "Save password", "", ""]
   }[mode];
@@ -341,11 +471,12 @@ $("auth-form").addEventListener("submit", async ev => {
   finally { $("auth-submit").disabled = false; }
 });
 
+let booted = false;
 sb.auth.onAuthStateChange((event, s) => {
   session = s;
   if (event === "PASSWORD_RECOVERY") { setTimeout(() => { setAuthMode("newpass"); $("auth").showModal(); }, 0); }
-  if (event === "SIGNED_IN" || event === "SIGNED_OUT" || event === "USER_UPDATED") {
-    setTimeout(async () => { await loadMine(); render(); map.closePopup(); }, 0);
+  if (booted && (event === "SIGNED_IN" || event === "SIGNED_OUT" || event === "USER_UPDATED")) {
+    setTimeout(async () => { todoOnly = false; await loadMine(); render(); map.closePopup(); }, 0);
   }
 });
 
@@ -353,12 +484,13 @@ sb.auth.onAuthStateChange((event, s) => {
 document.addEventListener("click", async e => {
   const oa = e.target.closest("[data-open-auth]"); if (oa) { openAuth(oa.dataset.openAuth); return; }
   if (e.target.closest("#logout")) { await sb.auth.signOut(); return; }
+  if (e.target.closest("#todo")) { todoOnly = !todoOnly; render(); return; }
   const chip = e.target.closest(".chip");
   if (chip) { activeRegion = chip.dataset.region; render(); flyTo(activeRegion); return; }
   const row = e.target.closest(".row");
   if (row) openShop(row.dataset.id);
 });
-$("tab-best").onclick = () => { view = "best"; $("tab-best").setAttribute("aria-selected", "true"); $("tab-all").setAttribute("aria-selected", "false"); render(); };
+$("tab-best").onclick = () => { view = "best"; todoOnly = false; $("tab-best").setAttribute("aria-selected", "true"); $("tab-all").setAttribute("aria-selected", "false"); render(); };
 $("tab-all").onclick = () => { view = "all"; $("tab-all").setAttribute("aria-selected", "true"); $("tab-best").setAttribute("aria-selected", "false"); render(); };
 $("search").addEventListener("input", render);
 $("sort").addEventListener("change", render);
@@ -369,13 +501,15 @@ $("reset").onclick = () => { activeRegion = "All"; render(); flyTo("All"); map.c
   try {
     const { data } = await sb.auth.getSession();
     session = data.session;
-    await Promise.all([loadShops(), loadStats(), loadMine()]);
+    await Promise.all([loadShops(), loadStats(), loadMine(), loadMonaco()]);
     buildMarkers();
+    applyMonaco();
     render();
   } catch (err) {
     console.error(err);
     $("list").innerHTML = `<p class="empty">Couldn't load the shops. Check your connection and refresh the page.</p>`;
     renderAccount();
   }
+  booted = true;
   setTimeout(() => map.invalidateSize(), 200);
 })();

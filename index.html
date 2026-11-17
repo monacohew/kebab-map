@@ -83,6 +83,47 @@
   </form>
 </dialog>
 
+<dialog class="auth sheet" id="rate">
+  <form class="auth-in" id="rate-form" novalidate>
+    <button type="button" class="x" id="rate-close" aria-label="Close">×</button>
+    <div>
+      <h2 id="rate-title">Rate this kebab</h2>
+      <p id="rate-where"></p>
+    </div>
+
+    <div class="q">
+      <span class="qlabel">What did you get?</span>
+      <div class="pills" data-field="style" data-single></div>
+    </div>
+    <div class="q">
+      <span class="qlabel">Meat</span>
+      <div class="pills" data-field="meats"></div>
+    </div>
+    <div class="q">
+      <span class="qlabel">Sauces</span>
+      <div class="pills" data-field="sauces"></div>
+    </div>
+    <details class="more">
+      <summary>Add salads (optional)</summary>
+      <div class="pills" data-field="salads"></div>
+    </details>
+
+    <div class="scores" id="scores"></div>
+    <div class="overall"><span>Overall</span><b id="overall">7.0</b><small>/10</small></div>
+
+    <details class="more" id="comment-wrap">
+      <summary>Add a comment (optional)</summary>
+      <textarea id="rate-comment" maxlength="280" placeholder="Anything worth knowing? Big portions, great garlic sauce…"></textarea>
+    </details>
+
+    <div class="msg" id="rate-msg" hidden></div>
+    <div class="actions">
+      <button class="btn wide" id="rate-save" type="submit">Save rating</button>
+    </div>
+    <button type="button" class="auth-switch" id="rate-delete" hidden>Remove my rating</button>
+  </form>
+</dialog>
+
 <script src="vendor/leaflet.js"></script>
 <script src="vendor/leaflet.markercluster.js"></script>
 <script src="vendor/supabase.js"></script>
