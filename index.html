@@ -16,7 +16,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="vendor/leaflet.css">
 <link rel="stylesheet" href="vendor/MarkerCluster.css">
-<link rel="stylesheet" href="style.css?v=202611181117">
+<link rel="stylesheet" href="style.css?v=202611181250">
 </head>
 <body>
 <div class="app">
@@ -39,6 +39,7 @@
         <button class="mode" role="tab" id="mode-monaco" aria-selected="true">Monaco's picks</button>
         <button class="mode" role="tab" id="mode-discover" aria-selected="false">Discover</button>
       </div>
+      <div id="tried" hidden></div>
       <div class="discover-bar" id="discover-bar" hidden>
         <label class="switch"><input type="checkbox" id="show-mon" checked><span class="track"></span>Show Monaco's shops</label>
         <label class="switch"><input type="checkbox" id="partners-only"><span class="track"></span>Partners only</label>
@@ -229,6 +230,6 @@
 <script src="vendor/leaflet.markercluster.js"></script>
 <script src="vendor/supabase.js"></script>
 <script src="vendor/qrcode.js"></script>
-<script src="app.js?v=202611181117"></script>
+<script src="app.js?v=202611181250"></script>
 </body>
 </html>

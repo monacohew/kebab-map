@@ -47,7 +47,7 @@ let session = null, profile = null;
 let activeRegion = "All", view = "best", todoOnly = false, mineOnly = false;
 let mode = "monaco", showMon = true;   // mode: "monaco" (Monaco's picks) or "discover" (every shop)
 const isMon = s => s.source === "monaco" || !!MON[s.id];
-let shopsIStaff = [];
+let shopsIStaff = [], TRIED = [];
 let PARTNERS = {}, SETTINGS = { program_name: "Kebab Crew", stamps_needed: 6, reward_text: "$5 off" }, partnersOnly = false;
 const isPartner = s => !!PARTNERS[s.id]?.active;
 const VIS = () => SHOPS.filter(s => mode === "monaco" ? isMon(s) : ((showMon || !isMon(s)) && (!partnersOnly || isPartner(s))));
@@ -426,7 +426,18 @@ function render() {
   }).join("");
 
   $("tools").hidden = view !== "all";
-  let html = "";
+  let html = "", triedHtml = "";
+  const toRate = TRIED.filter(id => !MINE[id]).map(id => SHOPS.find(s => s.id === id)).filter(Boolean)
+    .sort((a, b) => b.lat - a.lat);
+  if (session && toRate.length) {
+    const done = TRIED.length - toRate.length;
+    triedHtml = `<div class="tried-box"><div class="tried-head"><b>Shops you've tried</b><span>${done} of ${TRIED.length} rated</span></div>
+      <div class="tried-bar"><i style="width:${(done / TRIED.length * 100).toFixed(0)}%"></i></div>
+      ${toRate.map(s => `<div class="tried-row"><span><b>${esc(s.name)}</b><small>${esc(s.town)}</small></span><button type="button" class="btn" data-rate-tried="${esc(s.id)}">Rate</button></div>`).join("")}</div>`;
+  } else if (session && TRIED.length) {
+    triedHtml = `<div class="tried-box done"><b>All ${TRIED.length} of your shops are rated.</b> <span>Legend. Thanks for testing!</span></div>`;
+  }
+  $("tried").innerHTML = triedHtml; $("tried").hidden = !triedHtml;
   if (profile?.is_admin && mode === "monaco") {
     const left = SHOPS.filter(s => s.source === "monaco" && !MON[s.id]).length;
     html += `<div class="adminbar"><span>${left ? `<strong>${left}</strong> shops still need your breakdown` : "All your shops have breakdowns"}</span>${left ? `<button class="btn ghost" type="button" id="todo">${todoOnly ? "Show all" : "Show them"}</button>` : ""}</div>`;
@@ -647,7 +658,7 @@ async function loadStats() {
   (data || []).forEach(r => STATS[r.shop_id] = { avg: num(r.avg_score), n: r.rating_count, meat: num(r.avg_meat), sauce: num(r.avg_sauce), bread: num(r.avg_bread), value: num(r.avg_value) });
 }
 async function loadMine() {
-  MINE = {}; profile = null; shopsIStaff = [];
+  MINE = {}; profile = null; shopsIStaff = []; TRIED = [];
   if (!session) return;
   const [{ data: rows }, { data: prof }] = await Promise.all([
     sb.from("ratings").select("*").eq("user_id", session.user.id),
@@ -657,6 +668,8 @@ async function loadMine() {
   profile = prof;
   const { data: st } = await sb.from("shop_staff").select("shop_id");
   shopsIStaff = (st || []).map(x => x.shop_id);
+  const { data: tr } = await sb.from("tried_shops").select("shop_id").eq("user_id", session.user.id);
+  TRIED = (tr || []).map(x => x.shop_id);
 }
 
 // ---------- Auth ----------
@@ -740,6 +753,8 @@ document.addEventListener("click", async e => {
   if (e.target.closest("#logout")) { closeMenu(); await sb.auth.signOut(); return; }
   if (e.target.closest("#todo")) { todoOnly = !todoOnly; render(); return; }
   if (e.target.closest("#mine-off")) { mineOnly = false; render(); return; }
+  const rt = e.target.closest("[data-rate-tried]");
+  if (rt) { const s = SHOPS.find(x => x.id === rt.dataset.rateTried); if (s) openRate(s); return; }
   const chip = e.target.closest(".chip");
   if (chip) { activeRegion = chip.dataset.region; render(); flyTo(activeRegion); return; }
   const row = e.target.closest(".row");
