@@ -3,45 +3,33 @@
 body { margin: 0; }
 img { max-width: 100%; }
 
-/* Layout: one-screen map app. Desktop = panel left, map right. Phone = map on top, panel below. Iznik-tile blues over flatbread land. */
+/* Bright single theme: electric-blue header band, sunny yellow land on aqua sea, white cards. */
 :root {
-  --bg: #F3F6F7;
+  color-scheme: light;
+  --bg: #F3F6FF;
   --card: #FFFFFF;
-  --ink: #1B2340;
-  --muted: #5B6582;
-  --line: #DCE2EA;
-  --accent: #1F4FD1;
-  --sea: #BFE2E5;
-  --sea-deep: #A6D3D8;
-  --land: #F3D9A4;
-  --land-line: #C59E5A;
-  --label: #6B5430;
-  --t9: #1F4FD1;
-  --t8: #0B958E;
-  --t7: #E3A11B;
-  --t5: #E06A2C;
-  --t0: #C8323A;
-  --tn: #8A93A8;
-  --t7-ink: #1B2340;
-  --shadow: 0 6px 20px rgba(27, 35, 64, .12);
+  --ink: #12183A;
+  --muted: #5A6388;
+  --line: #DDE3F5;
+  --accent: #2D5BFF;
+  --accent-ink: #FFFFFF;
+  --band: #2D5BFF;
+  --band-2: #6B3CFF;
+  --sea: #A6ECF7;
+  --sea-deep: #5FD3EA;
+  --land: #FFE066;
+  --land-line: #FF9F1C;
+  --label: #7A3E00;
+  --t9: #8B2CF5;
+  --t8: #13B25A;
+  --t7: #FFC21A;
+  --t5: #FF7A1A;
+  --t0: #F0293E;
+  --tn: #9AA3BF;
+  --t7-ink: #3A2A00;
+  --shadow: 0 6px 18px rgba(30, 50, 140, .16);
   --font-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
   --font-body: "Figtree", "Segoe UI", system-ui, -apple-system, sans-serif;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0E1322; --card: #161E33; --ink: #EEF1F8; --muted: #9CA6C0; --line: #27314C; --accent: #86A6FF;
-    --sea: #0F2440; --sea-deep: #0C1D35; --land: #3B3224; --land-line: #7A6440; --label: #D9C39A;
-    --t9: #5B84FF; --t8: #19B3AA; --t7: #F0B23A; --t5: #EE7C3E; --t0: #E14B52; --tn: #6E7790; --t7-ink: #1B2340;
-    --shadow: 0 6px 22px rgba(0, 0, 0, .45);
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #0E1322; --card: #161E33; --ink: #EEF1F8; --muted: #9CA6C0; --line: #27314C; --accent: #86A6FF;
-  --sea: #0F2440; --sea-deep: #0C1D35; --land: #3B3224; --land-line: #7A6440; --label: #D9C39A;
-  --t9: #5B84FF; --t8: #19B3AA; --t7: #F0B23A; --t5: #EE7C3E; --t0: #E14B52; --tn: #6E7790; --t7-ink: #1B2340;
-  --shadow: 0 6px 22px rgba(0, 0, 0, .45);
-  color-scheme: dark;
 }
 
 html, body { height: 100%; }
@@ -245,3 +233,33 @@ details.more textarea { width: 100%; border: 1px solid var(--line); background: 
 .pop .rev .order { color: var(--muted); font-size: .76rem; display: block; }
 .badge { display: inline-block; font-size: .68rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--t7); color: var(--t7-ink); margin-left: 6px; vertical-align: 1px; }
 .adminbar { background: var(--card); border: 1px dashed var(--accent); border-radius: 12px; padding: 10px 12px; font-size: .86rem; display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+
+/* ---- Bright look ---- */
+header.top { background: linear-gradient(120deg, var(--band) 0%, var(--band-2) 100%); color: #fff; padding-block: 18px; position: relative; overflow: hidden; }
+header.top::after { content: ""; position: absolute; right: -46px; top: -56px; width: 120px; height: 120px; border-radius: 50%; background: var(--t7); opacity: .9; }
+header.top > * { position: relative; z-index: 1; }
+header.top > div { padding-right: 48px; }
+header.top h1 { color: #fff; }
+header.top .sub { color: rgba(255,255,255,.88); }
+.mark { background: #fff; border-radius: 14px; padding: 5px; box-shadow: 0 4px 12px rgba(0,0,0,.15); }
+@media (min-width: 821px) { .top-extras { padding-top: 16px; } }
+@media (max-width: 820px) { .top-extras { padding-top: 14px; } }
+
+.stat { border: 0; box-shadow: 0 2px 0 var(--line); }
+.stat:nth-child(1) b { color: var(--accent); }
+.stat:nth-child(2) b { color: var(--t8); }
+.stat.best b { color: var(--t9); }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.region-head { color: var(--accent); }
+.row { border-width: 1.5px; }
+.compare { border: 2px solid var(--t7); }
+
+/* Clearer pins: bigger, thick white ring, bold number */
+.pin { width: 40px; height: 40px; border-width: 3px; }
+.pin b { font-size: 13.5px; letter-spacing: -.02em; }
+.pin.top::after { top: -10px; right: -10px; background: var(--t7); color: var(--t7-ink); }
+.drop { filter: drop-shadow(0 3px 4px rgba(20, 30, 80, .25)); }
+.clus { width: 50px; height: 50px; border-width: 3px; }
+.legend i { width: 12px; height: 12px; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--line); }
+.legend span { color: var(--ink); font-weight: 600; }
+.city-label { text-shadow: 0 1px 0 #fff8; }

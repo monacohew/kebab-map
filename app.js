@@ -67,12 +67,12 @@ const cluster = L.markerClusterGroup({
   iconCreateFunction: c => {
     const scores = c.getAllChildMarkers().map(m => m.shop.score).filter(s => s != null);
     const best = scores.length ? Math.max(...scores) : null;
-    return L.divIcon({ className: "", iconSize: [46, 46], iconAnchor: [23, 23], html: `<div class="clus tier-${tier(best)}"><div><b>${c.getChildCount()}</b><span>best ${fmt(best)}</span></div></div>` });
+    return L.divIcon({ className: "", iconSize: [50, 50], iconAnchor: [25, 25], html: `<div class="clus tier-${tier(best)}"><div><b>${c.getChildCount()}</b><span>best ${fmt(best)}</span></div></div>` });
   }
 });
 map.addLayer(cluster);
 
-const pinIcon = s => L.divIcon({ className: "", iconSize: [34, 34], iconAnchor: [17, 41], popupAnchor: [0, -38], html: `<div class="drop"><div class="pin tier-${tier(s.score)}${TOP.has(s.id) ? " top" : ""}"><b>${s.score == null ? "?" : fmt(s.score)}</b></div></div>` });
+const pinIcon = s => L.divIcon({ className: "", iconSize: [40, 40], iconAnchor: [20, 48], popupAnchor: [0, -44], html: `<div class="drop"><div class="pin tier-${tier(s.score)}${TOP.has(s.id) ? " top" : ""}"><b>${s.score == null ? "?" : fmt(s.score)}</b></div></div>` });
 function buildMarkers() {
   cluster.clearLayers();
   SHOPS.forEach(s => {
