@@ -13,7 +13,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="vendor/leaflet.css">
 <link rel="stylesheet" href="vendor/MarkerCluster.css">
-<link rel="stylesheet" href="style.css?v=202611180945">
+<link rel="stylesheet" href="style.css?v=202611180952">
 </head>
 <body>
 <div class="app">
@@ -32,7 +32,6 @@
       </div>
     </header>
     <div class="top-extras">
-      <div class="account" id="account"><span class="who">Loading…</span></div>
       <div class="stats" id="stats"></div>
       <div class="chips" id="chips" role="group" aria-label="Filter by region"></div>
     </div>
@@ -68,6 +67,30 @@
     <button class="reset" id="reset">Whole country</button>
   </div>
 </div>
+
+<div class="me" id="me">
+  <button type="button" class="me-btn" id="me-btn" aria-haspopup="true" aria-expanded="false"><span class="me-login">Log in</span></button>
+  <div class="me-menu" id="me-menu" hidden></div>
+</div>
+
+<dialog class="auth" id="profile">
+  <form class="auth-in" id="profile-form" novalidate>
+    <button type="button" class="x" id="profile-close" aria-label="Close">×</button>
+    <h2>Your profile</h2>
+    <div class="pf-photo">
+      <span class="avatar xl" id="pf-avatar"></span>
+      <div class="pf-photo-btns">
+        <label class="btn ghost" for="pf-file">Choose photo</label>
+        <input type="file" id="pf-file" accept="image/*" hidden>
+        <button type="button" class="auth-switch" id="pf-remove" hidden>Remove photo</button>
+      </div>
+    </div>
+    <div class="field"><label for="pf-name">Your name</label><input id="pf-name" maxlength="40" autocomplete="nickname"></div>
+    <p class="fine" id="pf-email"></p>
+    <div class="msg" id="pf-msg" hidden></div>
+    <button class="btn wide" id="pf-save" type="submit">Save profile</button>
+  </form>
+</dialog>
 
 <dialog class="auth" id="auth">
   <form class="auth-in" id="auth-form" novalidate>
@@ -128,6 +151,6 @@
 <script src="vendor/leaflet.js"></script>
 <script src="vendor/leaflet.markercluster.js"></script>
 <script src="vendor/supabase.js"></script>
-<script src="app.js?v=202611180945"></script>
+<script src="app.js?v=202611180952"></script>
 </body>
 </html>

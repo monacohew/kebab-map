@@ -44,7 +44,7 @@ let MON = {};          // shop_id -> Monaco's breakdown rating row
 let MINE = {};         // shop_id -> my rating row
 let ADMIN_IDS = [];
 let session = null, profile = null;
-let activeRegion = "All", view = "best", todoOnly = false;
+let activeRegion = "All", view = "best", todoOnly = false, mineOnly = false;
 const TOP = new Set();
 const MARKERS = {};
 
@@ -137,14 +137,14 @@ document.getElementById("map").addEventListener("click", async ev => {
 });
 
 async function loadReviews(s, popup) {
-  const { data, error } = await sb.from("ratings").select("id, score, comment, style, meats, sauces, user_id, updated_at, profiles(display_name, is_admin)").eq("shop_id", s.id).order("updated_at", { ascending: false }).limit(20);
+  const { data, error } = await sb.from("ratings").select("id, score, comment, style, meats, sauces, user_id, updated_at, profiles(display_name, is_admin, avatar_url)").eq("shop_id", s.id).order("updated_at", { ascending: false }).limit(20);
   const box = popup.getElement()?.querySelector(".reviews");
   if (!box || error) return;
   const rows = (data || []).filter(r => !r.profiles?.is_admin);
   if (!rows.length) return;
   box.innerHTML = rows.map(r => {
     const order = orderText(r);
-    return `<div class="rev" data-rid="${r.id}"><b>${esc(r.profiles?.display_name || "Someone")}</b> · ${fmt1(num(r.score))}/10
+    return `<div class="rev" data-rid="${r.id}">${avatarHtml(r.profiles, "sm")}<b>${esc(r.profiles?.display_name || "Someone")}</b> · ${fmt1(num(r.score))}/10
       ${profile?.is_admin && r.user_id !== session?.user.id ? ' <button class="auth-switch" type="button" data-act="delrev">remove</button>' : ""}
       ${order ? `<span class="order">${esc(order)}</span>` : ""}
       ${r.comment ? `<q>${esc(r.comment)}</q>` : ""}</div>`;
@@ -312,6 +312,8 @@ function render() {
     const q = $("search").value.trim().toLowerCase();
     let list = inRegion.filter(s => !q || (s.name + " " + s.town).toLowerCase().includes(q));
     if (todoOnly) list = list.filter(s => !MON[s.id]);
+    if (mineOnly) list = list.filter(s => MINE[s.id]);
+    if (mineOnly) html += `<div class="adminbar"><span>Showing the <strong>${list.length}</strong> kebabs you've rated</span><button class="btn ghost" type="button" id="mine-off">Show all</button></div>`;
     const cmp = {
       score: (a, b) => (b.score ?? -1) - (a.score ?? -1),
       community: (a, b) => (STATS[b.id]?.avg ?? -1) - (STATS[a.id]?.avg ?? -1),
@@ -358,11 +360,124 @@ function renderCompare() {
     <p>${fd === 0 ? "No big disagreements yet." : `Biggest disagreement: <strong>${esc(far.name)}</strong>, ${esc(far.town)} (you ${fmt1(my(far))}, Monaco ${fmt1(far.score)}).`}</p>`;
 }
 
-function renderAccount() {
-  $("account").innerHTML = session
-    ? `<span class="who">Signed in as <b>${esc(profile?.display_name || session.user.email)}</b>${profile?.is_admin ? " · admin" : ""}</span><button class="btn ghost" type="button" id="logout">Log out</button>`
-    : `<span class="who">Rate kebabs and compare with Monaco</span><button class="btn" type="button" data-open-auth="login">Log in</button>`;
+const initials = n => (n || "?").trim().split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase();
+function avatarHtml(p, cls = "") {
+  const url = p?.avatar_url;
+  return `<span class="avatar ${cls}">${url ? `<img src="${esc(url)}" alt="" loading="lazy">` : esc(initials(p?.display_name))}</span>`;
 }
+function renderAccount() {
+  const btn = $("me-btn");
+  if (!session) {
+    btn.innerHTML = `<span class="me-login">Log in</span>`;
+    btn.setAttribute("aria-label", "Log in or create an account");
+    closeMenu();
+    return;
+  }
+  btn.innerHTML = avatarHtml(profile || { display_name: session.user.email });
+  btn.setAttribute("aria-label", "Your profile menu");
+  $("me-menu").innerHTML = `
+    <div class="who"><b>${esc(profile?.display_name || "You")}</b><span>${esc(session.user.email)}${profile?.is_admin ? " · admin" : ""}</span></div>
+    <button type="button" id="m-profile">Edit profile & photo</button>
+    ${profile?.is_admin ? "" : `<button type="button" id="m-mine">My ratings</button>`}
+    <button type="button" id="logout">Log out</button>`;
+}
+function closeMenu() { $("me-menu").hidden = true; $("me-btn").setAttribute("aria-expanded", "false"); }
+$("me-btn").addEventListener("click", e => {
+  e.stopPropagation();
+  if (!session) { openAuth("login"); return; }
+  const open = $("me-menu").hidden;
+  $("me-menu").hidden = !open; $("me-btn").setAttribute("aria-expanded", String(open));
+});
+document.addEventListener("click", e => { if (!e.target.closest("#me")) closeMenu(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeMenu(); });
+$("me-menu").addEventListener("click", e => {
+  if (e.target.id === "m-profile") { closeMenu(); openProfile(); }
+  if (e.target.id === "m-mine") {
+    closeMenu(); view = "all"; mineOnly = true;
+    $("tab-all").setAttribute("aria-selected", "true"); $("tab-best").setAttribute("aria-selected", "false");
+    render();
+    document.querySelector(".panel-scroll")?.scrollTo({ top: 0, behavior: "smooth" });
+  }
+});
+
+// ---------- Profile ----------
+let pendingPhoto = null, removePhoto = false;
+function previewAvatar(url) {
+  $("pf-avatar").innerHTML = url ? `<img src="${esc(url)}" alt="Your photo">` : esc(initials($("pf-name").value || profile?.display_name));
+  $("pf-remove").hidden = !url;
+}
+function openProfile() {
+  pendingPhoto = null; removePhoto = false;
+  $("pf-name").value = profile?.display_name || "";
+  $("pf-email").textContent = `Signed in with ${session.user.email}. Only your name and photo are shown to others.`;
+  $("pf-msg").hidden = true; $("pf-save").disabled = false; $("pf-save").textContent = "Save profile";
+  previewAvatar(profile?.avatar_url);
+  $("profile").showModal();
+}
+$("profile-close").onclick = () => $("profile").close();
+$("pf-name").addEventListener("input", () => { if (!pendingPhoto && (removePhoto || !profile?.avatar_url)) previewAvatar(null); });
+$("pf-remove").onclick = () => { pendingPhoto = null; removePhoto = true; $("pf-file").value = ""; previewAvatar(null); };
+$("pf-file").addEventListener("change", async () => {
+  const f = $("pf-file").files[0]; if (!f) return;
+  try {
+    pendingPhoto = await squareJpeg(f, 320);
+    removePhoto = false;
+    previewAvatar(URL.createObjectURL(pendingPhoto));
+  } catch {
+    $("pf-msg").textContent = "That photo couldn't be opened. Try a JPG or PNG."; $("pf-msg").className = "msg err"; $("pf-msg").hidden = false;
+  }
+});
+// Crop to a centred square and shrink, so uploads stay small and fast
+function squareJpeg(file, size) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(img.naturalWidth, img.naturalHeight);
+      const c = document.createElement("canvas"); c.width = c.height = size;
+      c.getContext("2d").drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, size, size);
+      URL.revokeObjectURL(img.src);
+      c.toBlob(b => b ? resolve(b) : reject(new Error("encode")), "image/jpeg", 0.85);
+    };
+    img.onerror = () => reject(new Error("load"));
+    img.src = URL.createObjectURL(file);
+  });
+}
+$("profile-form").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const name = $("pf-name").value.trim();
+  const msg = (t, ok) => { $("pf-msg").textContent = t; $("pf-msg").className = "msg " + (ok ? "ok" : "err"); $("pf-msg").hidden = false; };
+  if (!name) return msg("Add a name so people know whose reviews are whose.");
+  $("pf-save").disabled = true; $("pf-save").textContent = "Saving…";
+  try {
+    const patch = { display_name: name };
+    const uid = session.user.id;
+    if (pendingPhoto) {
+      const path = `${uid}/avatar-${Date.now()}.jpg`;
+      const { error: upErr } = await sb.storage.from("avatars").upload(path, pendingPhoto, { contentType: "image/jpeg", upsert: false });
+      if (upErr) throw upErr;
+      patch.avatar_url = sb.storage.from("avatars").getPublicUrl(path).data.publicUrl;
+    } else if (removePhoto) {
+      patch.avatar_url = null;
+    }
+    const { error } = await sb.from("profiles").update(patch).eq("id", uid);
+    if (error) throw error;
+    // tidy up old photos
+    if (pendingPhoto || removePhoto) {
+      const { data: files } = await sb.storage.from("avatars").list(uid);
+      const keep = patch.avatar_url?.split("/").pop();
+      const old = (files || []).map(f => `${uid}/${f.name}`).filter(p => !keep || !p.endsWith(keep));
+      if (old.length) await sb.storage.from("avatars").remove(old);
+    }
+    profile = { ...profile, ...patch };
+    renderAccount();
+    $("profile").close();
+    if (openPopup) refreshPopup(SHOPS.find(x => x.id === openPopup.getElement()?.querySelector(".pop")?.dataset.id));
+  } catch (err) {
+    console.error(err);
+    msg("Couldn't save your profile. Check your connection and try again.");
+    $("pf-save").disabled = false; $("pf-save").textContent = "Save profile";
+  }
+});
 
 // ---------- Data ----------
 function applyMonaco() {
@@ -399,7 +514,7 @@ async function loadMine() {
   if (!session) return;
   const [{ data: rows }, { data: prof }] = await Promise.all([
     sb.from("ratings").select("*").eq("user_id", session.user.id),
-    sb.from("profiles").select("display_name, is_admin").eq("id", session.user.id).maybeSingle()
+    sb.from("profiles").select("display_name, is_admin, avatar_url").eq("id", session.user.id).maybeSingle()
   ]);
   (rows || []).forEach(r => MINE[r.shop_id] = r);
   profile = prof;
@@ -476,22 +591,23 @@ sb.auth.onAuthStateChange((event, s) => {
   session = s;
   if (event === "PASSWORD_RECOVERY") { setTimeout(() => { setAuthMode("newpass"); $("auth").showModal(); }, 0); }
   if (booted && (event === "SIGNED_IN" || event === "SIGNED_OUT" || event === "USER_UPDATED")) {
-    setTimeout(async () => { todoOnly = false; await loadMine(); render(); map.closePopup(); }, 0);
+    setTimeout(async () => { todoOnly = false; mineOnly = false; closeMenu(); await loadMine(); render(); map.closePopup(); }, 0);
   }
 });
 
 // ---------- Events ----------
 document.addEventListener("click", async e => {
   const oa = e.target.closest("[data-open-auth]"); if (oa) { openAuth(oa.dataset.openAuth); return; }
-  if (e.target.closest("#logout")) { await sb.auth.signOut(); return; }
+  if (e.target.closest("#logout")) { closeMenu(); await sb.auth.signOut(); return; }
   if (e.target.closest("#todo")) { todoOnly = !todoOnly; render(); return; }
+  if (e.target.closest("#mine-off")) { mineOnly = false; render(); return; }
   const chip = e.target.closest(".chip");
   if (chip) { activeRegion = chip.dataset.region; render(); flyTo(activeRegion); return; }
   const row = e.target.closest(".row");
   if (row) openShop(row.dataset.id);
 });
-$("tab-best").onclick = () => { view = "best"; todoOnly = false; $("tab-best").setAttribute("aria-selected", "true"); $("tab-all").setAttribute("aria-selected", "false"); render(); };
-$("tab-all").onclick = () => { view = "all"; $("tab-all").setAttribute("aria-selected", "true"); $("tab-best").setAttribute("aria-selected", "false"); render(); };
+$("tab-best").onclick = () => { view = "best"; todoOnly = false; mineOnly = false; $("tab-best").setAttribute("aria-selected", "true"); $("tab-all").setAttribute("aria-selected", "false"); render(); };
+$("tab-all").onclick = () => { view = "all"; mineOnly = false; $("tab-all").setAttribute("aria-selected", "true"); $("tab-best").setAttribute("aria-selected", "false"); render(); };
 $("search").addEventListener("input", render);
 $("sort").addEventListener("change", render);
 $("reset").onclick = () => { activeRegion = "All"; render(); flyTo("All"); map.closePopup(); };
