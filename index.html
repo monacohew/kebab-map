@@ -13,7 +13,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="vendor/leaflet.css">
 <link rel="stylesheet" href="vendor/MarkerCluster.css">
-<link rel="stylesheet" href="style.css?v=202611180957">
+<link rel="stylesheet" href="style.css?v=202611181008">
 </head>
 <body>
 <div class="app">
@@ -140,6 +140,18 @@
       <textarea id="rate-comment" maxlength="280" placeholder="Anything worth knowing? Big portions, great garlic sauce…"></textarea>
     </details>
 
+    <div class="photo-pick">
+      <label class="photo-btn" for="rate-photo" id="rate-photo-label">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3 7.2 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3H9zm3 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
+        <span>Add a photo (optional)</span>
+      </label>
+      <input type="file" id="rate-photo" accept="image/*" hidden>
+      <div class="photo-preview" id="rate-photo-preview" hidden>
+        <img id="rate-photo-img" alt="Your kebab photo">
+        <button type="button" class="photo-x" id="rate-photo-remove" aria-label="Remove photo">×</button>
+      </div>
+    </div>
+
     <div class="msg" id="rate-msg" hidden></div>
     <div class="actions">
       <button class="btn wide" id="rate-save" type="submit">Save rating</button>
@@ -148,9 +160,11 @@
   </form>
 </dialog>
 
+<dialog class="lightbox" id="lightbox"><img id="lb-img" alt=""><p id="lb-cap"></p></dialog>
+
 <script src="vendor/leaflet.js"></script>
 <script src="vendor/leaflet.markercluster.js"></script>
 <script src="vendor/supabase.js"></script>
-<script src="app.js?v=202611180957"></script>
+<script src="app.js?v=202611181008"></script>
 </body>
 </html>

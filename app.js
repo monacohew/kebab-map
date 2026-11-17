@@ -50,7 +50,7 @@ const MARKERS = {};
 
 // ---------- Map ----------
 const NZ_BOUNDS = L.latLngBounds([[-46.9, 166.4], [-34.3, 178.6]]);
-const map = L.map("map", { zoomControl: false, attributionControl: false, minZoom: 4.5, maxZoom: 14, zoomSnap: 0.5, maxBounds: [[-50, 160], [-31, 184]] });
+const map = L.map("map", { zoomControl: false, attributionControl: false, minZoom: 4.5, maxZoom: 14, zoomSnap: 0.5, maxBounds: [[-54, 155], [-24, 190]] });
 map.fitBounds(NZ_BOUNDS, { padding: [10, 10] });
 L.control.zoom({ position: "bottomright" }).addTo(map);
 const css = () => getComputedStyle(document.documentElement);
@@ -78,7 +78,7 @@ function buildMarkers() {
   SHOPS.forEach(s => {
     const m = L.marker([s.lat, s.lng], { title: `${s.name}, ${s.town}`, riseOnHover: true, icon: pinIcon(s) });
     m.shop = s;
-    m.bindPopup(() => popupHtml(s), { maxWidth: 310, minWidth: 260, autoPanPadding: [20, 60] });
+    m.bindPopup(() => popupHtml(s), { maxWidth: 310, minWidth: 260, autoPanPaddingTopLeft: [16, 70], autoPanPaddingBottomRight: [16, 20] });
     MARKERS[s.id] = m;
     cluster.addLayer(m);
   });
@@ -124,6 +124,7 @@ function popupHtml(s) {
     </div>
     ${partsHtml(s)}
     ${monOrder ? `<p class="where">Monaco had: ${esc(monOrder)}</p>` : ""}
+    ${mon?.photo_url ? `<button type="button" class="rev-photo mon-photo" data-photo="${esc(mon.photo_url)}" data-cap="Monaco's kebab at ${esc(s.name)}"><img src="${esc(mon.photo_url)}" alt="Monaco's kebab at ${esc(s.name)}" loading="lazy"></button>` : ""}
     ${action}
     <div class="reviews" hidden></div>
   </div>`;
@@ -133,6 +134,8 @@ let openPopup = null;
 map.on("popupopen", e => {
   openPopup = e.popup;
   const el = e.popup.getElement().querySelector(".pop"); if (!el) return;
+  el.querySelectorAll(".mon-photo img").forEach(img => img.addEventListener("load", () => fitPopup(e.popup), { once: true }));
+  setTimeout(() => fitPopup(e.popup), 350);
   loadReviews(SHOPS.find(x => x.id === el.dataset.id), e.popup);
 });
 map.on("popupclose", () => { openPopup = null; });
@@ -141,7 +144,16 @@ function refreshPopup(s) {
   openPopup.setContent(popupHtml(s)); openPopup.update();
   loadReviews(s, openPopup);
 }
+function showPhoto(url, cap) { $("lb-img").src = url; $("lb-img").alt = cap || ""; $("lb-cap").textContent = cap || ""; $("lightbox").showModal(); }
+$("lightbox").addEventListener("click", () => $("lightbox").close());
+const PHOTO_PREFIX = SUPABASE_URL + "/storage/v1/object/public/kebab-photos/";
+async function removePhotoFile(url) {
+  if (!url?.startsWith(PHOTO_PREFIX)) return;
+  await sb.storage.from("kebab-photos").remove([decodeURIComponent(url.slice(PHOTO_PREFIX.length))]);
+}
 document.getElementById("map").addEventListener("click", async ev => {
+  const ph = ev.target.closest(".pop [data-photo]");
+  if (ph) { showPhoto(ph.dataset.photo, ph.dataset.cap); return; }
   const btn = ev.target.closest(".pop [data-act]"); if (!btn) return;
   const s = SHOPS.find(x => x.id === btn.closest(".pop").dataset.id), act = btn.dataset.act;
   if (act === "login") openAuth("signup");
@@ -150,7 +162,7 @@ document.getElementById("map").addEventListener("click", async ev => {
 });
 
 async function loadReviews(s, popup) {
-  const { data, error } = await sb.from("ratings").select("id, score, comment, style, meats, sauces, user_id, updated_at, profiles(display_name, is_admin, avatar_url)").eq("shop_id", s.id).order("updated_at", { ascending: false }).limit(20);
+  const { data, error } = await sb.from("ratings").select("id, score, comment, style, meats, sauces, photo_url, user_id, updated_at, profiles(display_name, is_admin, avatar_url)").eq("shop_id", s.id).order("updated_at", { ascending: false }).limit(20);
   const box = popup.getElement()?.querySelector(".reviews");
   if (!box || error) return;
   const rows = (data || []).filter(r => !r.profiles?.is_admin);
@@ -160,12 +172,33 @@ async function loadReviews(s, popup) {
     return `<div class="rev" data-rid="${r.id}">${avatarHtml(r.profiles, "sm")}<b>${esc(r.profiles?.display_name || "Someone")}</b> · ${fmt1(num(r.score))}/10
       ${profile?.is_admin && r.user_id !== session?.user.id ? ' <button class="auth-switch" type="button" data-act="delrev">remove</button>' : ""}
       ${order ? `<span class="order">${esc(order)}</span>` : ""}
-      ${r.comment ? `<q>${esc(r.comment)}</q>` : ""}</div>`;
+      ${r.comment ? `<q>${esc(r.comment)}</q>` : ""}
+      ${r.photo_url ? `<button type="button" class="rev-photo" data-photo="${esc(r.photo_url)}" data-cap="${esc((r.profiles?.display_name || "Someone") + "'s kebab")}"><img src="${esc(r.photo_url)}" alt="${esc((r.profiles?.display_name || "Someone") + "'s kebab")}" loading="lazy"></button>` : ""}</div>`;
   }).join("");
   box.hidden = false;
+  fitPopup(popup);
+  box.querySelectorAll("img").forEach(img => img.addEventListener("load", () => fitPopup(popup), { once: true }));
+}
+// Re-measure the card and pan the map so the whole card is visible
+function fitPopup(popup) {
+  if (!popup || !popup.isOpen()) return;
+  popup.update();
+  requestAnimationFrame(() => {
+    const el = popup.getElement(); if (!el) return;
+    const m = map.getContainer().getBoundingClientRect(), r = el.getBoundingClientRect();
+    const topGap = 64, sideGap = 12, bottomGap = 12;
+    let dx = 0, dy = 0;
+    if (r.top < m.top + topGap) dy = r.top - (m.top + topGap);
+    else if (r.bottom > m.bottom - bottomGap) dy = Math.min(r.bottom - (m.bottom - bottomGap), r.top - (m.top + topGap));
+    if (r.left < m.left + sideGap) dx = r.left - (m.left + sideGap);
+    else if (r.right > m.right - sideGap) dx = r.right - (m.right - sideGap);
+    if (dx || dy) map.panBy([dx, dy], { animate: true, duration: 0.3 });
+  });
 }
 async function adminDelete(id, s) {
+  const { data: row } = await sb.from("ratings").select("photo_url").eq("id", id).maybeSingle();
   const { error } = await sb.from("ratings").delete().eq("id", id);
+  if (!error && row?.photo_url) await removePhotoFile(row.photo_url);
   if (!error) { await loadStats(); render(); refreshPopup(s); }
 }
 
@@ -181,7 +214,18 @@ function flyTo(region) {
 }
 
 // ---------- Rating sheet ----------
-let rateShop = null;
+let rateShop = null, ratePhoto = null, rateRemovePhoto = false;
+function showRatePhoto(url) {
+  $("rate-photo-preview").hidden = !url;
+  $("rate-photo-label").hidden = !!url;
+  if (url) $("rate-photo-img").src = url;
+}
+$("rate-photo").addEventListener("change", async () => {
+  const f = $("rate-photo").files[0]; if (!f) return;
+  try { ratePhoto = await resizeJpeg(f, 1280, false); rateRemovePhoto = false; showRatePhoto(URL.createObjectURL(ratePhoto)); }
+  catch { $("rate-msg").textContent = "That photo couldn't be opened. Try a JPG or PNG."; $("rate-msg").className = "msg err"; $("rate-msg").hidden = false; }
+});
+$("rate-photo-remove").onclick = () => { ratePhoto = null; rateRemovePhoto = true; $("rate-photo").value = ""; showRatePhoto(null); };
 const draft = { style: null, meats: [], sauces: [], salads: [], meat: 7, sauce: 7, bread: 7, value: 7 };
 
 function renderPills() {
@@ -224,6 +268,8 @@ function openRate(s) {
   $("comment-wrap").open = !!mine?.comment;
   document.querySelector("#rate details.more").open = !!(mine?.salads?.length);
   $("rate-delete").hidden = !mine;
+  ratePhoto = null; rateRemovePhoto = false; $("rate-photo").value = "";
+  showRatePhoto(mine?.photo_url || null);
   $("rate-msg").hidden = true;
   $("rate-save").disabled = false;
   $("rate-save").textContent = mine ? "Update rating" : "Save rating";
@@ -250,7 +296,20 @@ $("rate-form").addEventListener("submit", async ev => {
   ev.preventDefault();
   const s = rateShop, existing = MINE[s.id];
   const fields = { meat: draft.meat, sauce: draft.sauce, bread: draft.bread, value: draft.value, style: draft.style, meats: draft.meats, sauces: draft.sauces, salads: draft.salads, comment: $("rate-comment").value.trim() || null };
-  $("rate-save").disabled = true; $("rate-save").textContent = "Saving…";
+  $("rate-save").disabled = true; $("rate-save").textContent = ratePhoto ? "Uploading photo…" : "Saving…";
+  const oldPhoto = existing?.photo_url || null;
+  if (ratePhoto) {
+    const path = `${session.user.id}/${s.id}-${Date.now()}.jpg`;
+    const { error: upErr } = await sb.storage.from("kebab-photos").upload(path, ratePhoto, { contentType: "image/jpeg" });
+    if (upErr) {
+      console.error(upErr);
+      $("rate-msg").textContent = "Couldn't upload your photo. Try again, or save without it.";
+      $("rate-msg").className = "msg err"; $("rate-msg").hidden = false;
+      $("rate-save").disabled = false; $("rate-save").textContent = existing ? "Update rating" : "Save rating";
+      return;
+    }
+    fields.photo_url = sb.storage.from("kebab-photos").getPublicUrl(path).data.publicUrl;
+  } else if (rateRemovePhoto) fields.photo_url = null;
   const q = existing
     ? sb.from("ratings").update(fields).eq("shop_id", s.id).eq("user_id", session.user.id).select().single()
     : sb.from("ratings").insert({ ...fields, shop_id: s.id, user_id: session.user.id }).select().single();
@@ -263,6 +322,7 @@ $("rate-form").addEventListener("submit", async ev => {
     return;
   }
   MINE[s.id] = data;
+  if (oldPhoto && oldPhoto !== data.photo_url) removePhotoFile(oldPhoto);
   if (profile?.is_admin) { MON[s.id] = data; applyMonaco(); }
   await loadStats();
   $("rate").close();
@@ -273,6 +333,7 @@ $("rate-delete").onclick = async () => {
   const s = rateShop;
   const { error } = await sb.from("ratings").delete().eq("shop_id", s.id).eq("user_id", session.user.id);
   if (error) { $("rate-msg").textContent = "Couldn't remove it. Try again."; $("rate-msg").className = "msg err"; $("rate-msg").hidden = false; return; }
+  if (MINE[s.id]?.photo_url) removePhotoFile(MINE[s.id].photo_url);
   delete MINE[s.id];
   if (profile?.is_admin) { delete MON[s.id]; applyMonaco(); }
   await loadStats();
@@ -440,14 +501,20 @@ $("pf-file").addEventListener("change", async () => {
     $("pf-msg").textContent = "That photo couldn't be opened. Try a JPG or PNG."; $("pf-msg").className = "msg err"; $("pf-msg").hidden = false;
   }
 });
-// Crop to a centred square and shrink, so uploads stay small and fast
-function squareJpeg(file, size) {
+// Shrink photos before upload (optionally crop to a centred square) so they stay small and fast
+const squareJpeg = (file, size) => resizeJpeg(file, size, true);
+function resizeJpeg(file, max, square) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
-      const s = Math.min(img.naturalWidth, img.naturalHeight);
-      const c = document.createElement("canvas"); c.width = c.height = size;
-      c.getContext("2d").drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, size, size);
+      const W = img.naturalWidth, H = img.naturalHeight, c = document.createElement("canvas"), ctx = c.getContext("2d");
+      if (square) {
+        const s = Math.min(W, H); c.width = c.height = max;
+        ctx.drawImage(img, (W - s) / 2, (H - s) / 2, s, s, 0, 0, max, max);
+      } else {
+        const k = Math.min(1, max / Math.max(W, H)); c.width = Math.round(W * k); c.height = Math.round(H * k);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+      }
       URL.revokeObjectURL(img.src);
       c.toBlob(b => b ? resolve(b) : reject(new Error("encode")), "image/jpeg", 0.85);
     };
