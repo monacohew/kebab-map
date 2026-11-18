@@ -14,9 +14,8 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44'%3E%3Crect x='21' y='2' width='2.5' height='40' fill='%235B6582'/%3E%3Cpath d='M10 10h24l-3 7H13z' fill='%23E06A2C'/%3E%3Cpath d='M12 17h20l-2 6H14z' fill='%23E3A11B'/%3E%3Cpath d='M13 23h18l-2 6H15z' fill='%23C8323A'/%3E%3Cpath d='M15 29h14l-2 5H17z' fill='%230B958E'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="vendor/leaflet.css">
-<link rel="stylesheet" href="vendor/MarkerCluster.css">
-<link rel="stylesheet" href="style.css?v=202611181250">
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<link rel="stylesheet" href="style.css?v=202611181625">
 </head>
 <body>
 <div class="app">
@@ -79,6 +78,11 @@
   <div class="map-wrap">
     <div id="map" aria-label="Map of kebab shops in New Zealand"></div>
     <button class="reset" id="reset">Whole country</button>
+    <div class="mapctl" role="group" aria-label="Map controls">
+      <button type="button" id="z-in" aria-label="Zoom in"><svg viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg></button>
+      <button type="button" id="z-out" aria-label="Zoom out"><svg viewBox="0 0 24 24"><path d="M5 11h14v2H5z"/></svg></button>
+      <button type="button" id="locate" aria-label="Show kebab shops near me"><svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm8.94 3A9 9 0 0 0 13 3.06V1h-2v2.06A9 9 0 0 0 3.06 11H1v2h2.06A9 9 0 0 0 11 20.94V23h2v-2.06A9 9 0 0 0 20.94 13H23v-2h-2.06zM12 19a7 7 0 1 1 0-14 7 7 0 0 1 0 14z"/></svg></button>
+    </div>
   </div>
 </div>
 
@@ -226,10 +230,10 @@
 
 <dialog class="lightbox" id="lightbox"><img id="lb-img" alt=""><p id="lb-cap"></p></dialog>
 
-<script src="vendor/leaflet.js"></script>
-<script src="vendor/leaflet.markercluster.js"></script>
+<script src="vendor/maplibre-gl.js"></script>
+<script src="vendor/supercluster.min.js"></script>
 <script src="vendor/supabase.js"></script>
 <script src="vendor/qrcode.js"></script>
-<script src="app.js?v=202611181250"></script>
+<script src="app.js?v=202611181625"></script>
 </body>
 </html>
