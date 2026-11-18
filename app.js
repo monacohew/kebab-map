@@ -54,111 +54,48 @@ const VIS = () => SHOPS.filter(s => mode === "monaco" ? isMon(s) : ((showMon || 
 // The number on a pin: Monaco's score on his shops, everyone's average on the rest
 const ps = s => (mode === "monaco" || isMon(s)) ? s.score : (STATS[s.id]?.avg ?? null);
 const TOP = new Set();
-const MARKERS = {};   // shop id -> map marker currently on screen
-const SHOP_BY_ID = () => Object.fromEntries(SHOPS.map(s => [s.id, s]));
+const MARKERS = {};
 
 // ---------- Map ----------
-// Vector basemap (OpenFreeMap, free, no key) drawn by MapLibre: smooth fractional zoom, real streets.
-const NZ_BOUNDS = [[166.2, -47.4], [178.8, -34.2]];
-const map = new maplibregl.Map({
-  container: "map",
-  style: "https://tiles.openfreemap.org/styles/positron",
-  bounds: NZ_BOUNDS, fitBoundsOptions: { padding: 24 },
-  minZoom: 3.8, maxZoom: 17.5, maxBounds: [[148, -56], [197, -24]],
-  attributionControl: false, dragRotate: false, pitchWithRotate: false, touchPitch: false,
-  renderWorldCopies: false, cooperativeGestures: false, fadeDuration: 150
-});
-map.touchZoomRotate.disableRotation();
-map.keyboard.disableRotation?.();
-map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: "Shop data © OpenStreetMap contributors" }), "bottom-left");
-// Cartoon-style basemap: flat sunny land, bright sea, white roads, no shop/business clutter
-const THEME = { land: "#FFE07A", sea: "#7ED6EE", green: "#BFE79A", built: "#FFD25E", building: "#F8C84E", road: "#FFFFFF", roadEdge: "#F2B24A", border: "#E0912B", text: "#4A2F00", halo: "#FFF6D8" };
-function setP(id, prop, val) { try { map.setPaintProperty(id, prop, val); } catch {} }
-map.on("style.load", () => {
-  for (const l of map.getStyle().layers) {
-    const id = l.id;
-    if (l.type === "background") setP(id, "background-color", THEME.land);
-    else if (l.type === "fill") {
-      if (/water|ocean|sea|lake|river/.test(id)) { setP(id, "fill-color", THEME.sea); setP(id, "fill-opacity", 1); setP(id, "fill-outline-color", THEME.sea); }
-      else if (/park|wood|forest|grass|landcover|vegetation|wetland|scrub|cemetery|pitch/.test(id)) { setP(id, "fill-color", THEME.green); setP(id, "fill-opacity", 0.7); }
-      else if (/building/.test(id)) { setP(id, "fill-color", THEME.building); setP(id, "fill-opacity", 0.55); setP(id, "fill-outline-color", THEME.roadEdge); }
-      else if (/landuse|residential|industrial|commercial|aeroway|airport|school|hospital|ice|glacier/.test(id)) { setP(id, "fill-color", THEME.built); setP(id, "fill-opacity", 0.35); }
-    } else if (l.type === "line") {
-      if (/water/.test(id)) setP(id, "line-color", THEME.sea);
-      else if (/boundary|admin/.test(id)) { setP(id, "line-color", THEME.border); setP(id, "line-opacity", 0.6); }
-      else if (/rail|transit/.test(id)) { setP(id, "line-color", THEME.roadEdge); setP(id, "line-opacity", 0.5); }
-      else if (/casing|outline/.test(id)) setP(id, "line-color", THEME.roadEdge);
-      else if (/road|highway|street|motorway|trunk|primary|secondary|tertiary|minor|service|path|track|bridge|tunnel|link/.test(id)) setP(id, "line-color", THEME.road);
-    } else if (l.type === "symbol") {
-      if (/poi|housenum|shield|transit|aeroway|airport|oneway|mountain|peak/.test(id)) { try { map.setLayoutProperty(id, "visibility", "none"); } catch {} }
-      else { setP(id, "text-color", /water|ocean|sea|lake/.test(id) ? "#1D7FA0" : THEME.text); setP(id, "text-halo-color", /water|ocean|sea|lake/.test(id) ? "#C8F1FA" : THEME.halo); setP(id, "text-halo-width", 1.6); }
-    } else if (l.type === "hillshade" || l.type === "fill-extrusion") { try { map.setLayoutProperty(id, "visibility", "none"); } catch {} }
+const NZ_BOUNDS = L.latLngBounds([[-46.9, 166.4], [-34.3, 178.6]]);
+const map = L.map("map", { zoomControl: false, attributionControl: false, minZoom: 4.5, maxZoom: 14, zoomSnap: 0.5, maxBounds: [[-54, 155], [-24, 190]] });
+map.fitBounds(NZ_BOUNDS, { padding: [10, 10] });
+L.control.zoom({ position: "bottomright" }).addTo(map);
+const css = () => getComputedStyle(document.documentElement);
+const landStyle = () => ({ color: css().getPropertyValue("--land-line").trim(), weight: 1.2, fillColor: css().getPropertyValue("--land").trim(), fillOpacity: 1, interactive: false });
+const land = L.layerGroup().addTo(map);
+fetch("nz.json").then(r => r.json()).then(polys => polys.forEach(r => land.addLayer(L.polygon(r.map(([x, y]) => [y, x]), landStyle())))).catch(() => {});
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => land.eachLayer(l => l.setStyle(landStyle())));
+
+map.createPane("labels"); map.getPane("labels").style.zIndex = 450; map.getPane("labels").style.pointerEvents = "none";
+CITIES.forEach(([n, la, ln]) => L.marker([la, ln], { pane: "labels", interactive: false, icon: L.divIcon({ className: "", html: `<div class="city-label">${n}</div>`, iconSize: [120, 14], iconAnchor: [-14, 22] }) }).addTo(map));
+
+const cluster = L.markerClusterGroup({
+  showCoverageOnHover: false, maxClusterRadius: 42, spiderfyOnMaxZoom: true, removeOutsideVisibleBounds: false,
+  iconCreateFunction: c => {
+    const scores = c.getAllChildMarkers().map(m => ps(m.shop)).filter(s => s != null);
+    const best = scores.length ? Math.max(...scores) : null;
+    return L.divIcon({ className: "", iconSize: [50, 50], iconAnchor: [25, 25], html: `<div class="clus tier-${tier(best)}"><div><b>${c.getChildCount()}</b><span>best ${fmt(best)}</span></div></div>` });
   }
 });
-map.on("moveend", drawMarkers);
-map.on("load", () => { drawMarkers(); setTimeout(() => map.resize(), 100); });
+map.addLayer(cluster);
 
-// Clustering: Supercluster groups nearby shops; markers are redrawn when the map settles
-let index = null, drawn = new Map();
-function pinHtml(s) {
+const pinIcon = s => {
   const v = ps(s), monBadge = mode === "discover" && isMon(s);
   const label = v == null ? (mode === "discover" && !isMon(s) ? "+" : "?") : fmt(v);
-  const cls = ["pin", "tier-" + tier(v)];
-  if (TOP.has(s.id)) cls.push("top");
-  if (monBadge) cls.push("monb");
-  if (isPartner(s)) cls.push("partner");
-  if (v == null && mode === "discover") cls.push("fresh");
-  if (openPopup?.shopId === s.id) cls.push("sel");
-  return `<div class="${cls.join(" ")}"><b>${label}</b></div>`;
-}
-const pinIcon = pinHtml;
-function clusterHtml(p) {
-  const best = p.best >= 0 ? p.best : null, n = p.point_count;
-  const size = Math.round(40 + Math.min(n, 60) * 0.45);
-  return `<div class="clus tier-${tier(best)}" style="--s:${size}px"><b>${p.point_count_abbreviated}</b>${best != null ? `<span>top ${fmt(best)}</span>` : ""}</div>`;
-}
+  return L.divIcon({ className: "", iconSize: [40, 40], iconAnchor: [20, 48], popupAnchor: [0, -44], html: `<div class="drop"><div class="pin tier-${tier(v)}${TOP.has(s.id) ? " top" : ""}${monBadge ? " monb" : ""}${isPartner(s) ? " partner" : ""}${v == null && mode === "discover" ? " fresh" : ""}"><b>${label}</b></div></div>` });
+};
 function buildMarkers() {
-  computeTop();
-  const feats = VIS().map(s => ({ type: "Feature", properties: { id: s.id, v: ps(s) }, geometry: { type: "Point", coordinates: [s.lng, s.lat] } }));
-  index = new Supercluster({ radius: 52, maxZoom: 13, minPoints: 3,
-    map: p => ({ best: p.v ?? -1 }), reduce: (a, b) => { a.best = Math.max(a.best, b.best); } }).load(feats);
-  for (const [, d] of drawn) d.marker.remove();
-  drawn = new Map();
-  drawMarkers();
-}
-function drawMarkers() {
-  if (!index) return;
-  const b = map.getBounds(), z = Math.floor(map.getZoom());
-  const pad = (b.getEast() - b.getWest()) * 0.25;
-  const items = index.getClusters([b.getWest() - pad, Math.max(-85, b.getSouth() - pad), b.getEast() + pad, Math.min(85, b.getNorth() + pad)], z);
-  const byId = SHOP_BY_ID(), next = new Map();
-  for (const f of items) {
-    const p = f.properties, isC = !!p.cluster, key = isC ? "cluster:" + p.cluster_id : "shop:" + p.id;
-    const s = isC ? null : byId[p.id]; if (!isC && !s) continue;
-    const html = isC ? clusterHtml(p) : pinHtml(s);
-    const old = drawn.get(key);
-    if (old && old.html === html) { next.set(key, old); drawn.delete(key); continue; }
-    if (old) { old.marker.remove(); drawn.delete(key); }
-    const el = document.createElement("div");
-    el.className = "mk " + (isC ? "mk-c" : "mk-s");
-    el.innerHTML = html;
-    el.tabIndex = 0; el.setAttribute("role", "button");
-    el.setAttribute("aria-label", isC ? `${p.point_count} shops here, zoom in` : `${s.name}, ${s.town}`);
-    if (!isC) el.title = `${s.name} · ${s.town}`;
-    const go = ev => { ev.stopPropagation(); isC ? zoomCluster(p.cluster_id, f.geometry.coordinates) : openShop(p.id); };
-    el.addEventListener("click", go);
-    el.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); go(ev); } });
-    const marker = new maplibregl.Marker({ element: el, anchor: isC ? "center" : "bottom" }).setLngLat(f.geometry.coordinates).addTo(map);
-    next.set(key, { marker, html });
-  }
-  for (const [, d] of drawn) d.marker.remove();
-  drawn = next;
+  cluster.clearLayers();
   for (const k in MARKERS) delete MARKERS[k];
-  for (const [k, d] of drawn) if (k.startsWith("shop:")) MARKERS[k.slice(5)] = d.marker;
-}
-function zoomCluster(id, center) {
-  const z = Math.min(index.getClusterExpansionZoom(id) + 0.3, 16);
-  map.easeTo({ center, zoom: z, duration: 650 });
+  computeTop();
+  VIS().forEach(s => {
+    const m = L.marker([s.lat, s.lng], { title: `${s.name}, ${s.town}`, riseOnHover: true, icon: pinIcon(s) });
+    m.shop = s;
+    m.bindPopup(() => popupHtml(s), { maxWidth: 310, minWidth: 260, autoPanPaddingTopLeft: [16, 70], autoPanPaddingBottomRight: [16, 20] });
+    MARKERS[s.id] = m;
+    cluster.addLayer(m);
+  });
 }
 function refreshPins() { buildMarkers(); }
 function computeTop() {
@@ -219,30 +156,20 @@ function popupHtml(s) {
   </div>`;
 }
 
-// One shop card at a time, anchored to the shop's pin
-const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: "330px", focusAfterOpen: false,
-  offset: { "bottom": [0, -46], "bottom-left": [0, -46], "bottom-right": [0, -46], "top": [0, 6], "top-left": [0, 6], "top-right": [0, 6], "left": [18, -24], "right": [-18, -24] } });
 let openPopup = null;
-popup.on("close", () => { const was = openPopup?.shopId; openPopup = null; if (was) drawMarkers(); });
-function showPopup(s) {
-  popup.setLngLat([s.lng, s.lat]).setHTML(popupHtml(s));
-  if (!popup.isOpen()) popup.addTo(map);
-  openPopup = popup; popup.shopId = s.id;
-  rebuildPin(s.id);
-  const el = popup.getElement()?.querySelector(".pop");
-  el?.querySelectorAll(".mon-photo img").forEach(img => img.addEventListener("load", () => fitPopup(popup), { once: true }));
-  setTimeout(() => fitPopup(popup), 60);
-  logEvent(s.id, "view");
-  loadReviews(s, popup);
-}
-function closePopup() { if (popup.isOpen()) popup.remove(); }
-// Redraw just one pin (selected state) without touching the rest
-function rebuildPin(id) { for (const [k, d] of drawn) if (k === "shop:" + id || d.html.includes(" sel")) { d.html = ""; } drawMarkers(); }
+map.on("popupopen", e => {
+  openPopup = e.popup;
+  const el = e.popup.getElement().querySelector(".pop"); if (!el) return;
+  el.querySelectorAll(".mon-photo img").forEach(img => img.addEventListener("load", () => fitPopup(e.popup), { once: true }));
+  setTimeout(() => fitPopup(e.popup), 350);
+  logEvent(el.dataset.id, "view");
+  loadReviews(SHOPS.find(x => x.id === el.dataset.id), e.popup);
+});
+map.on("popupclose", () => { openPopup = null; });
 function refreshPopup(s) {
-  if (!openPopup || !popup.isOpen()) return;
-  popup.setHTML(popupHtml(s));
-  loadReviews(s, popup);
-  setTimeout(() => fitPopup(popup), 30);
+  if (!openPopup) return;
+  openPopup.setContent(popupHtml(s)); openPopup.update();
+  loadReviews(s, openPopup);
 }
 function showPhoto(url, cap) { $("lb-img").src = url; $("lb-img").alt = cap || ""; $("lb-cap").textContent = cap || ""; $("lightbox").showModal(); }
 $("lightbox").addEventListener("click", () => $("lightbox").close());
@@ -290,19 +217,21 @@ async function loadReviews(s, popup) {
   fitPopup(popup);
   box.querySelectorAll("img").forEach(img => img.addEventListener("load", () => fitPopup(popup), { once: true }));
 }
-// Pan the map so the whole card is visible
-function fitPopup(p) {
-  if (!p || !p.isOpen()) return;
+// Re-measure the card and pan the map so the whole card is visible
+function fitPopup(popup) {
+  if (!popup || !popup.isOpen()) return;
+  // Re-measure without re-rendering the card (update() would rebuild the content)
+  if (popup._updateLayout) { popup._updateLayout(); popup._updatePosition(); } else popup.update();
   requestAnimationFrame(() => {
-    const el = p.getElement(); if (!el) return;
+    const el = popup.getElement(); if (!el) return;
     const m = map.getContainer().getBoundingClientRect(), r = el.getBoundingClientRect();
-    const topGap = 60, sideGap = 12, bottomGap = 12;
+    const topGap = 64, sideGap = 12, bottomGap = 12;
     let dx = 0, dy = 0;
     if (r.top < m.top + topGap) dy = r.top - (m.top + topGap);
     else if (r.bottom > m.bottom - bottomGap) dy = Math.min(r.bottom - (m.bottom - bottomGap), r.top - (m.top + topGap));
     if (r.left < m.left + sideGap) dx = r.left - (m.left + sideGap);
     else if (r.right > m.right - sideGap) dx = r.right - (m.right - sideGap);
-    if (dx || dy) map.panBy([dx, dy], { duration: 300 });
+    if (dx || dy) map.panBy([dx, dy], { animate: true, duration: 0.3 });
   });
 }
 async function adminDelete(id, s) {
@@ -313,26 +242,14 @@ async function adminDelete(id, s) {
 }
 
 function openShop(id) {
-  const s = SHOPS.find(x => x.id === id); if (!s) return;
+  const m = MARKERS[id]; if (!m) return;
+  cluster.zoomToShowLayer(m, () => m.openPopup());
   if (window.innerWidth <= 820) document.querySelector(".map-wrap").scrollIntoView({ behavior: "smooth", block: "start" });
-  const target = Math.max(map.getZoom(), 12.5);
-  const c = map.project([s.lng, s.lat]), sz = map.getContainer().getBoundingClientRect();
-  const visible = c.x > 40 && c.y > 120 && c.x < sz.width - 40 && c.y < sz.height - 20;
-  if (visible && map.getZoom() >= 12) { showPopup(s); return; }
-  let done = false;
-  const open = () => { if (!done) { done = true; showPopup(s); } };
-  map.once("moveend", open);
-  setTimeout(open, 1300);
-  // Put the pin in the lower part of the map so the card has room above it
-  map.flyTo({ center: [s.lng, s.lat], zoom: target, offset: [0, Math.round(sz.height * 0.25)], speed: 1.6, curve: 1.3 });
 }
 function flyTo(region) {
-  const pts = SHOPS.filter(s => region === "All" || s.region === region);
+  const pts = SHOPS.filter(s => region === "All" || s.region === region).map(s => [s.lat, s.lng]);
   if (!pts.length) return;
-  closePopup();
-  if (region === "All") { map.fitBounds(NZ_BOUNDS, { padding: 24, duration: 900 }); return; }
-  const lngs = pts.map(s => s.lng), lats = pts.map(s => s.lat);
-  map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], { padding: 60, maxZoom: 11.5, duration: 900 });
+  map.flyToBounds(region === "All" ? NZ_BOUNDS : L.latLngBounds(pts), { padding: [50, 50], maxZoom: 11, duration: 0.9 });
 }
 
 // ---------- Rating sheet ----------
@@ -396,7 +313,7 @@ function openRate(s) {
   $("rate-save").disabled = false;
   $("rate-save").textContent = mine ? "Update rating" : "Save rating";
   renderPills(); renderScores();
-  closePopup();
+  map.closePopup();
   $("rate").showModal();
 }
 $("rate").addEventListener("click", e => {
@@ -775,7 +692,7 @@ function setAuthMode(mode) {
   $("auth-msg").hidden = true;
   $("auth-submit").disabled = false;
 }
-function openAuth(mode) { setAuthMode(mode); closePopup(); $("auth").showModal(); }
+function openAuth(mode) { setAuthMode(mode); map.closePopup(); $("auth").showModal(); }
 function authMsg(text, ok) { const m = $("auth-msg"); m.textContent = text; m.className = "msg " + (ok ? "ok" : "err"); m.hidden = false; }
 const friendly = err => {
   const m = (err?.message || "").toLowerCase();
@@ -826,7 +743,7 @@ sb.auth.onAuthStateChange((event, s) => {
   session = s;
   if (event === "PASSWORD_RECOVERY") { setTimeout(() => { setAuthMode("newpass"); $("auth").showModal(); }, 0); }
   if (booted && (event === "SIGNED_IN" || event === "SIGNED_OUT" || event === "USER_UPDATED")) {
-    setTimeout(async () => { todoOnly = false; mineOnly = false; closeMenu(); await loadMine(); render(); closePopup(); }, 0);
+    setTimeout(async () => { todoOnly = false; mineOnly = false; closeMenu(); await loadMine(); render(); map.closePopup(); }, 0);
   }
 });
 
@@ -847,23 +764,7 @@ $("tab-best").onclick = () => { view = "best"; todoOnly = false; mineOnly = fals
 $("tab-all").onclick = () => { view = "all"; mineOnly = false; $("tab-all").setAttribute("aria-selected", "true"); $("tab-best").setAttribute("aria-selected", "false"); render(); };
 $("search").addEventListener("input", render);
 $("sort").addEventListener("change", render);
-$("reset").onclick = () => { activeRegion = "All"; render(); flyTo("All"); closePopup(); };
-
-// ---------- Map controls ----------
-$("z-in").onclick = () => map.zoomIn({ duration: 300 });
-$("z-out").onclick = () => map.zoomOut({ duration: 300 });
-let meMarker = null;
-$("locate").onclick = () => {
-  if (!navigator.geolocation) return;
-  $("locate").classList.add("busy");
-  navigator.geolocation.getCurrentPosition(pos => {
-    $("locate").classList.remove("busy");
-    const ll = [pos.coords.longitude, pos.coords.latitude];
-    if (!meMarker) { const e = document.createElement("div"); e.className = "me-dot"; meMarker = new maplibregl.Marker({ element: e }); }
-    meMarker.setLngLat(ll).addTo(map);
-    map.flyTo({ center: ll, zoom: 12.5, speed: 1.6 });
-  }, () => { $("locate").classList.remove("busy"); }, { enableHighAccuracy: true, timeout: 10000 });
-};
+$("reset").onclick = () => { activeRegion = "All"; render(); flyTo("All"); map.closePopup(); };
 
 // ---------- Discover ----------
 function setMode(m) {
@@ -871,15 +772,15 @@ function setMode(m) {
   $("fine").textContent = m === "monaco"
     ? "Pin colours and numbers are Monaco's scores. Pins sit in the right town or suburb, not always on the exact street."
     : "Pins show everyone's average score. Shops with an M are Monaco's, showing his score. Dashed pins have no reviews yet, so be the first.";
-  closePopup();
+  map.closePopup();
   refreshPins();
   render();
   try { localStorage.setItem("kebab.mode", m); } catch {}
 }
 $("mode-monaco").onclick = () => setMode("monaco");
 $("mode-discover").onclick = () => setMode("discover");
-$("partners-only").addEventListener("change", e => { partnersOnly = e.target.checked; closePopup(); refreshPins(); render(); });
-$("show-mon").addEventListener("change", e => { showMon = e.target.checked; closePopup(); refreshPins(); render(); });
+$("partners-only").addEventListener("change", e => { partnersOnly = e.target.checked; map.closePopup(); refreshPins(); render(); });
+$("show-mon").addEventListener("change", e => { showMon = e.target.checked; map.closePopup(); refreshPins(); render(); });
 
 // Add a missing shop
 let newLoc = null, picking = false, pickMarker = null;
@@ -893,20 +794,18 @@ function setNewLoc(lat, lng, how) {
   newLoc = { lat: Math.round(lat * 1e5) / 1e5, lng: Math.round(lng * 1e5) / 1e5 };
   const r = nearestRegion(lat, lng); if (r) $("as-region").value = r;
   $("as-loc").textContent = `Location set (${how}).`;
-  if (pickMarker) pickMarker.remove();
-  const pe = document.createElement("div"); pe.className = "mk mk-s"; pe.innerHTML = '<div class="pin fresh sel"><b>+</b></div>';
-  pickMarker = new maplibregl.Marker({ element: pe, anchor: "bottom" }).setLngLat([newLoc.lng, newLoc.lat]).addTo(map);
-  map.easeTo({ center: [newLoc.lng, newLoc.lat], zoom: Math.max(map.getZoom(), 14), duration: 500 });
+  if (pickMarker) map.removeLayer(pickMarker);
+  pickMarker = L.marker([newLoc.lat, newLoc.lng], { icon: L.divIcon({ className: "", iconSize: [40, 40], iconAnchor: [20, 48], html: '<div class="pin fresh"><b>+</b></div>' }) }).addTo(map);
 }
 function asMsg(text, ok) { $("as-msg").textContent = text; $("as-msg").className = "msg " + (ok ? "ok" : "err"); $("as-msg").hidden = false; }
 $("add-shop").onclick = () => {
   if (!session) { openAuth("signup"); return; }
   newLoc = null; $("as-name").value = ""; $("as-town").value = ""; $("as-loc").textContent = "No location set yet.";
   $("as-msg").hidden = true; $("as-save").disabled = false;
-  if (pickMarker) { pickMarker.remove(); pickMarker = null; }
+  if (pickMarker) { map.removeLayer(pickMarker); pickMarker = null; }
   $("addshop").showModal();
 };
-$("addshop-close").onclick = () => { $("addshop").close(); if (pickMarker) { pickMarker.remove(); pickMarker = null; } };
+$("addshop-close").onclick = () => { $("addshop").close(); if (pickMarker) { map.removeLayer(pickMarker); pickMarker = null; } };
 $("as-here").onclick = () => {
   if (!navigator.geolocation) return asMsg("Your browser can't share your location. Tap it on the map instead.");
   $("as-loc").textContent = "Finding you…";
@@ -922,7 +821,7 @@ $("as-pick").onclick = () => {
 };
 function endPick() { picking = false; document.body.classList.remove("picking"); $("pickbar").hidden = true; $("addshop").showModal(); }
 $("pick-cancel").onclick = endPick;
-map.on("click", e => { if (!picking) return; setNewLoc(e.lngLat.lat, e.lngLat.lng, "tapped on the map"); endPick(); });
+map.on("click", e => { if (!picking) return; setNewLoc(e.latlng.lat, e.latlng.lng, "tapped on the map"); endPick(); });
 const slug = s => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
 $("addshop-form").addEventListener("submit", async ev => {
   ev.preventDefault();
@@ -940,7 +839,7 @@ $("addshop-form").addEventListener("submit", async ev => {
   if (error) { console.error(error); $("as-save").disabled = false; return asMsg("Couldn't add the shop. Check your connection and try again."); }
   SHOPS.push({ ...row, monaco_score: null, legacy: null, score: null });
   $("addshop").close();
-  if (pickMarker) { pickMarker.remove(); pickMarker = null; }
+  if (pickMarker) { map.removeLayer(pickMarker); pickMarker = null; }
   if (mode !== "discover") setMode("discover"); else { refreshPins(); render(); }
   openShop(row.id);
 });
@@ -991,7 +890,7 @@ async function adminPartnerAction(btn) {
   if (error) { console.error(error); return say("Couldn't save that. Try again."); }
   await loadPartners();
   const shop = SHOPS.find(s => s.id === shopId);
-  refreshPins();
+  MARKERS[shopId]?.setIcon(pinIcon(shop));
   if (openPopup && shop) refreshPopup(shop);
   await loadAdminPartner(d);
   d.querySelector(".ap-msg").textContent = "Saved.";
@@ -1102,5 +1001,5 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden && $(
     renderAccount();
   }
   booted = true;
-  setTimeout(() => map.resize(), 200);
+  setTimeout(() => map.invalidateSize(), 200);
 })();
