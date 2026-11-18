@@ -24,7 +24,7 @@ body.shopapp { min-height: 100%; height: auto; background: var(--bg); }
 .tline { display: flex; align-items: center; gap: 10px; background: var(--card); border-radius: 12px; padding: 10px 12px; font-size: .9rem; }
 .tline time { color: var(--muted); font-variant-numeric: tabular-nums; margin-left: auto; font-size: .8rem; }
 .tline .tag { font-size: .72rem; font-weight: 800; border-radius: 999px; padding: 2px 8px; background: var(--bg); }
-.tline .tag.rw { background: var(--t7); color: var(--t7-ink); }
+.tline .tag.rw { background: var(--gold); color: var(--gold-ink); }
 .tline .tag.nw { background: var(--t8); color: #fff; }
 .sh-foot { text-align: center; color: var(--muted); font-size: .86rem; }
 .sh-foot a { color: var(--accent); }
@@ -45,14 +45,14 @@ body.shopapp { min-height: 100%; height: auto; background: var(--bg); }
 .result .avatar { width: 72px; height: 72px; font-size: 1.6rem; }
 .result.ok .icon { background: var(--t8); }
 .result.reward { background: linear-gradient(160deg, #FFF3C4, #FFE0EE); }
-.result.reward .icon { background: var(--t9); }
-.result.reward .big { color: var(--t9); font-size: 2.6rem; }
+.result.reward .icon { background: var(--band-2); }
+.result.reward .big { color: var(--band-2); font-size: 2.6rem; }
 .result.warn .icon { background: var(--t5); }
 .result.bad .icon { background: var(--t0); }
 .result .dots { display: flex; gap: 8px; justify-content: center; }
 .result .dots i { width: 30px; height: 30px; border-radius: 50%; border: 3px dashed var(--line); background: #fff; }
 .result .dots i.on { background: var(--t8); border: 3px solid var(--t8); }
-.result .dots i.last.on { background: var(--t9); border-color: var(--t9); }
+.result .dots i.last.on { background: var(--gold); border-color: var(--gold); }
 .result .btn.wide { max-width: 420px; padding: 16px; font-size: 1.1rem; }
 
 /* Stats */

@@ -20,13 +20,17 @@ img { max-width: 100%; }
   --land: #FFE066;
   --land-line: #FF9F1C;
   --label: #7A3E00;
-  --t9: #8B2CF5;
-  --t8: #13B25A;
-  --t7: #FFC21A;
-  --t5: #FF7A1A;
-  --t0: #F0293E;
+  /* Score scale: red (skip) -> orange -> lime -> green -> deep green (best) */
+  --t9: #0B7A43;
+  --t8: #1FAF55;
+  --t7: #9CD33B;
+  --t5: #FF8A1F;
+  --t0: #E5243B;
   --tn: #9AA3BF;
-  --t7-ink: #3A2A00;
+  --t7-ink: #1F3B06;
+  /* Gold is only for special markers: top picks, partners, rewards */
+  --gold: #FFC21A;
+  --gold-ink: #3A2A00;
   --shadow: 0 6px 18px rgba(30, 50, 140, .16);
   --font-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
   --font-body: "Figtree", "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -75,7 +79,7 @@ h1 { font-family: var(--font-display); font-weight: 800; font-size: 1.55rem; lin
 .row .name { font-weight: 700; line-height: 1.25; display: block; }
 .row .where { font-size: .8rem; color: var(--muted); display: block; }
 .row .mine { font-size: .75rem; font-weight: 600; color: var(--accent); }
-.crown { color: var(--t7); font-size: .8rem; margin-left: 4px; }
+.crown { color: var(--gold); font-size: .8rem; margin-left: 4px; }
 
 .score { flex: none; min-width: 46px; text-align: center; font-family: var(--font-display); font-weight: 800; font-size: 1.05rem; padding: 5px 8px; border-radius: 10px; color: #fff; font-variant-numeric: tabular-nums; }
 .score small { font-size: .62rem; opacity: .8; font-weight: 600; }
@@ -231,12 +235,12 @@ details.more textarea { width: 100%; border: 1px solid var(--line); background: 
 .parts b { font-variant-numeric: tabular-nums; text-align: right; }
 .parts em { font-style: normal; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
 .pop .rev .order { color: var(--muted); font-size: .76rem; display: block; }
-.badge { display: inline-block; font-size: .68rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--t7); color: var(--t7-ink); margin-left: 6px; vertical-align: 1px; }
+.badge { display: inline-block; font-size: .68rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--gold); color: var(--gold-ink); margin-left: 6px; vertical-align: 1px; }
 .adminbar { background: var(--card); border: 1px dashed var(--accent); border-radius: 12px; padding: 10px 12px; font-size: .86rem; display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 
 /* ---- Bright look ---- */
 header.top { background: linear-gradient(120deg, var(--band) 0%, var(--band-2) 100%); color: #fff; padding-block: 18px; position: relative; overflow: hidden; }
-header.top::after { content: ""; position: absolute; right: -46px; top: -56px; width: 120px; height: 120px; border-radius: 50%; background: var(--t7); opacity: .9; }
+header.top::after { content: ""; position: absolute; right: -46px; top: -56px; width: 120px; height: 120px; border-radius: 50%; background: var(--gold); opacity: .9; }
 header.top > * { position: relative; z-index: 1; }
 header.top > div { padding-right: 48px; }
 header.top h1 { color: #fff; }
@@ -248,16 +252,16 @@ header.top .sub { color: rgba(255,255,255,.88); }
 .stat { border: 0; box-shadow: 0 2px 0 var(--line); }
 .stat:nth-child(1) b { color: var(--accent); }
 .stat:nth-child(2) b { color: var(--t8); }
-.stat.best b { color: var(--t9); }
+.stat.best b { color: var(--band-2); }
 .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 .region-head { color: var(--accent); }
 .row { border-width: 1.5px; }
-.compare { border: 2px solid var(--t7); }
+.compare { border: 2px solid var(--gold); }
 
 /* Clearer pins: bigger, thick white ring, bold number */
 .pin { width: 40px; height: 40px; border-width: 3px; }
 .pin b { font-size: 13.5px; letter-spacing: -.02em; }
-.pin.top::after { top: -10px; right: -10px; background: var(--t7); color: var(--t7-ink); }
+.pin.top::after { top: -10px; right: -10px; background: var(--gold); color: var(--gold-ink); }
 .drop { filter: drop-shadow(0 3px 4px rgba(20, 30, 80, .25)); }
 .clus { width: 50px; height: 50px; border-width: 3px; }
 .legend i { width: 12px; height: 12px; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--line); }
@@ -281,7 +285,7 @@ header.top .sub { color: rgba(255,255,255,.88); }
 .me-btn { border: 0; padding: 0; background: none; cursor: pointer; border-radius: 999px; box-shadow: 0 4px 14px rgba(20, 30, 90, .25); }
 .me-login { display: inline-block; background: var(--card); color: var(--accent); font-weight: 800; padding: 10px 18px; border-radius: 999px; }
 .avatar { width: 44px; height: 44px; border-radius: 50%; display: inline-grid; place-items: center; overflow: hidden; flex: none;
-  background: linear-gradient(135deg, var(--t9), var(--accent)); color: #fff; font-family: var(--font-display); font-weight: 800; font-size: 1rem; border: 3px solid #fff; }
+  background: linear-gradient(135deg, var(--band-2), var(--accent)); color: #fff; font-family: var(--font-display); font-weight: 800; font-size: 1rem; border: 3px solid #fff; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .avatar.sm { width: 24px; height: 24px; font-size: .62rem; border-width: 0; vertical-align: middle; margin-right: 6px; }
 .avatar.xl { width: 96px; height: 96px; font-size: 2rem; border-width: 4px; box-shadow: var(--shadow); }
@@ -352,8 +356,8 @@ dialog.lightbox p { color: #fff; text-align: center; margin: 8px 0 0; font-weigh
 .fine a { color: var(--accent); }
 
 /* ---- Partners ---- */
-.pin.partner { box-shadow: 0 0 0 3px var(--t7), var(--shadow); }
-.partner-banner { display: flex; flex-direction: column; gap: 2px; background: linear-gradient(120deg, #FFF3C4, #FFE6F0); border: 1.5px solid var(--t7); border-radius: 12px; padding: 8px 11px; margin: -2px 0 12px; font-size: .8rem; color: var(--ink); }
+.pin.partner { box-shadow: 0 0 0 3px var(--gold), var(--shadow); }
+.partner-banner { display: flex; flex-direction: column; gap: 2px; background: linear-gradient(120deg, #FFF3C4, #FFE6F0); border: 1.5px solid var(--gold); border-radius: 12px; padding: 8px 11px; margin: -2px 0 12px; font-size: .8rem; color: var(--ink); }
 .partner-banner b { font-family: var(--font-display); font-size: .9rem; }
 .verified { display: inline-block; font-size: .68rem; font-weight: 800; color: var(--t8); background: color-mix(in srgb, var(--t8) 12%, transparent); border-radius: 999px; padding: 1px 7px; margin-left: 4px; }
 details.admin-partner { margin-top: 10px; border: 1.5px dashed var(--accent); border-radius: 12px; padding: 8px 10px; font-size: .82rem; }
@@ -382,8 +386,8 @@ dialog.card-dlg { width: min(420px, calc(100vw - 20px)); max-height: calc(100dvh
 .card-hint { text-align: center; margin: 0; color: var(--muted); font-size: .86rem; }
 .card-result { display: flex; flex-direction: column; gap: 2px; text-align: center; background: color-mix(in srgb, var(--t8) 14%, #fff); border: 2px solid var(--t8); border-radius: 14px; padding: 12px; }
 .card-result b { font-family: var(--font-display); font-size: 1.3rem; color: var(--t8); }
-.card-result.reward { background: linear-gradient(120deg, #FFF3C4, #FFE6F0); border-color: var(--t7); animation: pop .5s cubic-bezier(.3, 1.6, .5, 1); }
-.card-result.reward b { color: var(--t9); font-size: 1.6rem; }
+.card-result.reward { background: linear-gradient(120deg, #FFF3C4, #FFE6F0); border-color: var(--gold); animation: pop .5s cubic-bezier(.3, 1.6, .5, 1); }
+.card-result.reward b { color: var(--band-2); font-size: 1.6rem; }
 .card-rule { margin: 0; font-weight: 700; text-align: center; font-size: .9rem; }
 .passport { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .pp { background: var(--bg); border-radius: 12px; padding: 10px; text-align: center; }
@@ -396,8 +400,8 @@ dialog.card-dlg { width: min(420px, calc(100vw - 20px)); max-height: calc(100dvh
 .stampcard .dots { display: flex; gap: 6px; }
 .stampcard .dots i { width: 22px; height: 22px; border-radius: 50%; border: 2px dashed var(--line); background: #fff; }
 .stampcard .dots i.on { background: var(--t8); border: 2px solid var(--t8); }
-.stampcard .dots i.last { border-color: var(--t7); }
-.stampcard .dots i.last.on { background: var(--t7); border-color: var(--t7); }
+.stampcard .dots i.last { border-color: var(--gold); }
+.stampcard .dots i.last.on { background: var(--gold); border-color: var(--gold); }
 .stampcard .next { font-weight: 700; color: var(--ink); }
 
 /* Admin partner settings: opened in its own window */
@@ -442,8 +446,8 @@ dialog.admin-partner .ap-row input[type=checkbox] { width: 22px; height: 22px; }
 .mk-s:hover .pin { transform: translateY(-2px) scale(1.08); }
 .mk-s .pin.sel { transform: translateY(-3px) scale(1.18); box-shadow: 0 0 0 3px var(--ink), 0 6px 16px rgba(18, 24, 58, .35); }
 .mk-s .pin.top::after { content: "★"; position: absolute; top: -9px; right: -9px; transform: none; width: 18px; height: 18px; line-height: 16px; font-size: 11px; text-align: center;
-  border-radius: 50%; background: var(--t7); color: var(--t7-ink); border: 2px solid #fff; }
-.mk-s .pin.partner { box-shadow: 0 0 0 3px var(--t7), 0 3px 10px rgba(18, 24, 58, .28); }
+  border-radius: 50%; background: var(--gold); color: var(--gold-ink); border: 2px solid #fff; }
+.mk-s .pin.partner { box-shadow: 0 0 0 3px var(--gold), 0 3px 10px rgba(18, 24, 58, .28); }
 .mk-s .pin.monb { padding-left: 24px; }
 .mk-s .pin.monb::before { /* keep pointer */ }
 .mk-s .pin.monb b::before { content: "M"; position: absolute; left: 4px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; border-radius: 50%; background: rgba(255,255,255,.95);
