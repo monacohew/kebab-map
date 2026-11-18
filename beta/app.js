@@ -81,8 +81,9 @@ map.on("style.load", () => {
     else if (l.type === "fill") {
       if (/water|ocean|sea|lake|river/.test(id)) { setP(id, "fill-color", THEME.sea); setP(id, "fill-opacity", 1); setP(id, "fill-outline-color", THEME.sea); }
       else if (/park|wood|forest|grass|landcover|vegetation|wetland|scrub|cemetery|pitch/.test(id)) { setP(id, "fill-color", THEME.green); setP(id, "fill-opacity", 0.7); }
-      else if (/building/.test(id)) { setP(id, "fill-color", THEME.building); setP(id, "fill-opacity", 0.55); setP(id, "fill-outline-color", THEME.roadEdge); }
-      else if (/landuse|residential|industrial|commercial|aeroway|airport|school|hospital|ice|glacier/.test(id)) { setP(id, "fill-color", THEME.built); setP(id, "fill-opacity", 0.35); }
+      else if (/building/.test(id)) { setP(id, "fill-color", THEME.building); setP(id, "fill-opacity", ["interpolate", ["linear"], ["zoom"], 14, 0, 16, 0.45]); setP(id, "fill-outline-color", THEME.building); }
+      else if (/landuse|residential|industrial|commercial|aeroway|airport|school|hospital/.test(id)) { setP(id, "fill-color", THEME.built); setP(id, "fill-opacity", 0.18); }
+      else if (/ice|glacier/.test(id)) { setP(id, "fill-color", "#FFFFFF"); setP(id, "fill-opacity", 0.7); }
     } else if (l.type === "line") {
       if (/water/.test(id)) setP(id, "line-color", THEME.sea);
       else if (/boundary|admin/.test(id)) { setP(id, "line-color", THEME.border); setP(id, "line-opacity", 0.6); }
@@ -90,13 +91,13 @@ map.on("style.load", () => {
       else if (/casing|outline/.test(id)) setP(id, "line-color", THEME.roadEdge);
       else if (/road|highway|street|motorway|trunk|primary|secondary|tertiary|minor|service|path|track|bridge|tunnel|link/.test(id)) setP(id, "line-color", THEME.road);
     } else if (l.type === "symbol") {
-      if (/poi|housenum|shield|transit|aeroway|airport|oneway|mountain|peak/.test(id)) { try { map.setLayoutProperty(id, "visibility", "none"); } catch {} }
+      if (/poi|housenum|shield|transit|aeroway|airport|oneway|mountain|peak|label_other/.test(id) || (l.layout && l.layout["icon-image"] && !/label_(city|town|village|state|country)/.test(id))) { try { map.setLayoutProperty(id, "visibility", "none"); } catch {} }
       else { setP(id, "text-color", /water|ocean|sea|lake/.test(id) ? "#1D7FA0" : THEME.text); setP(id, "text-halo-color", /water|ocean|sea|lake/.test(id) ? "#C8F1FA" : THEME.halo); setP(id, "text-halo-width", 1.6); }
     } else if (l.type === "hillshade" || l.type === "fill-extrusion") { try { map.setLayoutProperty(id, "visibility", "none"); } catch {} }
   }
 });
 map.on("moveend", drawMarkers);
-map.on("load", () => { drawMarkers(); setTimeout(() => map.resize(), 100); });
+map.on("load", () => { map.resize(); map.fitBounds(NZ_BOUNDS, { padding: 24, duration: 0 }); drawMarkers(); });
 
 // Clustering: Supercluster groups nearby shops; markers are redrawn when the map settles
 let index = null, drawn = new Map();
