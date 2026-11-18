@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Monaco's Kebab Map</title>
+<meta name="theme-color" content="#2D5BFF">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/app-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="description" content="Turkish kebab shops around New Zealand, tried and scored by Monaco. Add your own scores and see how you compare.">
+<meta property="og:title" content="Monaco's Kebab Map">
+<meta property="og:description" content="The best Turkish kebabs in every region of NZ. Rate them yourself and see if you agree.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44'%3E%3Crect x='21' y='2' width='2.5' height='40' fill='%235B6582'/%3E%3Cpath d='M10 10h24l-3 7H13z' fill='%23E06A2C'/%3E%3Cpath d='M12 17h20l-2 6H14z' fill='%23E3A11B'/%3E%3Cpath d='M13 23h18l-2 6H15z' fill='%23C8323A'/%3E%3Cpath d='M15 29h14l-2 5H17z' fill='%230B958E'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<link rel="stylesheet" href="style.css?v=202611181621">
+</head>
+<body>
+<div class="app">
+  <aside class="panel">
+    <header class="top">
+      <svg class="mark" viewBox="0 0 44 44" aria-hidden="true">
+        <rect x="21" y="2" width="2.5" height="40" rx="1.2" fill="var(--muted)"/>
+        <path d="M10 10h24l-3 7H13z" fill="var(--t5)"/>
+        <path d="M12 17h20l-2 6H14z" fill="var(--t7)"/>
+        <path d="M13 23h18l-2 6H15z" fill="var(--t0)"/>
+        <path d="M15 29h14l-2 5H17z" fill="var(--t8)"/>
+      </svg>
+      <div>
+        <h1>Monaco's Kebab Map</h1>
+        <p class="sub">Turkish kebabs tried and scored on the road around Aotearoa</p>
+      </div>
+    </header>
+    <div class="top-extras">
+      <div class="modes" role="tablist" aria-label="What to show">
+        <button class="mode" role="tab" id="mode-monaco" aria-selected="true">Monaco's picks</button>
+        <button class="mode" role="tab" id="mode-discover" aria-selected="false">Discover</button>
+      </div>
+      <div id="tried" hidden></div>
+      <div class="discover-bar" id="discover-bar" hidden>
+        <label class="switch"><input type="checkbox" id="show-mon" checked><span class="track"></span>Show Monaco's shops</label>
+        <label class="switch"><input type="checkbox" id="partners-only"><span class="track"></span>Partners only</label>
+        <button type="button" class="btn" id="add-shop">+ Add a missing shop</button>
+      </div>
+      <div class="stats" id="stats"></div>
+      <div class="chips" id="chips" role="group" aria-label="Filter by region"></div>
+    </div>
+    <div class="panel-scroll">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" id="tab-best" aria-selected="true">Best by region</button>
+        <button class="tab" role="tab" id="tab-all" aria-selected="false">All shops</button>
+      </div>
+      <div class="tools" id="tools" hidden>
+        <input id="search" type="search" placeholder="Search shop or town" aria-label="Search shop or town">
+        <select id="sort" aria-label="Sort shops">
+          <option value="score">Monaco's top rated</option>
+          <option value="community">Community top rated</option>
+          <option value="north">North to south</option>
+          <option value="az">A to Z</option>
+        </select>
+      </div>
+      <div class="list" id="list"><p class="loading">Loading shops…</p></div>
+      <div class="compare" id="compare"></div>
+      <div class="legend">
+        <span><i style="background:var(--t9)"></i>9+ legendary</span>
+        <span><i style="background:var(--t8)"></i>8+ cracker</span>
+        <span><i style="background:var(--t7)"></i>7+ solid</span>
+        <span><i style="background:var(--t5)"></i>5+ meh</span>
+        <span><i style="background:var(--t0)"></i>under 5 skip it</span>
+        <span><i style="background:var(--tn)"></i>no score yet</span>
+      </div>
+      <p class="fine" id="fine">Pin colours and numbers are Monaco's scores. Pins sit in the right town or suburb, not always on the exact street.</p>
+      <p class="fine">Extra shops in Discover come from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a> and from people using this site.</p>
+    </div>
+  </aside>
+  <div class="map-wrap">
+    <div id="map" aria-label="Map of kebab shops in New Zealand"></div>
+    <button class="reset" id="reset">Whole country</button>
+    <div class="mapctl" role="group" aria-label="Map controls">
+      <button type="button" id="z-in" aria-label="Zoom in"><svg viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg></button>
+      <button type="button" id="z-out" aria-label="Zoom out"><svg viewBox="0 0 24 24"><path d="M5 11h14v2H5z"/></svg></button>
+      <button type="button" id="locate" aria-label="Show kebab shops near me"><svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm8.94 3A9 9 0 0 0 13 3.06V1h-2v2.06A9 9 0 0 0 3.06 11H1v2h2.06A9 9 0 0 0 11 20.94V23h2v-2.06A9 9 0 0 0 20.94 13H23v-2h-2.06zM12 19a7 7 0 1 1 0-14 7 7 0 0 1 0 14z"/></svg></button>
+    </div>
+  </div>
+</div>
+
+<div class="me" id="me">
+  <button type="button" class="me-btn" id="me-btn" aria-haspopup="true" aria-expanded="false"><span class="me-login">Log in</span></button>
+  <div class="me-menu" id="me-menu" hidden></div>
+</div>
+
+<dialog class="auth" id="profile">
+  <form class="auth-in" id="profile-form" novalidate>
+    <button type="button" class="x" id="profile-close" aria-label="Close">×</button>
+    <h2>Your profile</h2>
+    <div class="pf-photo">
+      <span class="avatar xl" id="pf-avatar"></span>
+      <div class="pf-photo-btns">
+        <label class="btn ghost" for="pf-file">Choose photo</label>
+        <input type="file" id="pf-file" accept="image/*" hidden>
+        <button type="button" class="auth-switch" id="pf-remove" hidden>Remove photo</button>
+      </div>
+    </div>
+    <div class="field"><label for="pf-name">Your name</label><input id="pf-name" maxlength="40" autocomplete="nickname"></div>
+    <p class="fine" id="pf-email"></p>
+    <div class="msg" id="pf-msg" hidden></div>
+    <button class="btn wide" id="pf-save" type="submit">Save profile</button>
+  </form>
+</dialog>
+
+<dialog class="auth" id="auth">
+  <form class="auth-in" id="auth-form" novalidate>
+    <button type="button" class="x" id="auth-close" aria-label="Close">×</button>
+    <h2 id="auth-title">Join the kebab crew</h2>
+    <p id="auth-blurb">Make an account to score shops and see how you stack up against Monaco.</p>
+    <div class="field" id="f-name"><label for="in-name">Your name</label><input id="in-name" autocomplete="nickname" maxlength="40" placeholder="Shown next to your reviews"></div>
+    <div class="field" id="f-email"><label for="in-email">Email</label><input id="in-email" type="email" autocomplete="email" required></div>
+    <div class="field" id="f-pass"><label for="in-pass">Password</label><input id="in-pass" type="password" autocomplete="new-password" minlength="6" required></div>
+    <div class="msg" id="auth-msg" hidden></div>
+    <button class="btn wide" id="auth-submit" type="submit">Create account</button>
+    <button type="button" class="auth-switch" id="auth-forgot" hidden>Forgot your password?</button>
+    <p><span id="auth-alt-text">Already have an account?</span> <button type="button" class="auth-switch" id="auth-alt">Log in</button></p>
+  </form>
+</dialog>
+
+<dialog class="auth sheet" id="rate">
+  <form class="auth-in" id="rate-form" novalidate>
+    <button type="button" class="x" id="rate-close" aria-label="Close">×</button>
+    <div>
+      <h2 id="rate-title">Rate this kebab</h2>
+      <p id="rate-where"></p>
+    </div>
+
+    <div class="q">
+      <span class="qlabel">What did you get?</span>
+      <div class="pills" data-field="style" data-single></div>
+    </div>
+    <div class="q">
+      <span class="qlabel">Meat</span>
+      <div class="pills" data-field="meats"></div>
+    </div>
+    <div class="q">
+      <span class="qlabel">Sauces</span>
+      <div class="pills" data-field="sauces"></div>
+    </div>
+    <details class="more">
+      <summary>Add salads (optional)</summary>
+      <div class="pills" data-field="salads"></div>
+    </details>
+
+    <div class="scores" id="scores"></div>
+    <div class="overall"><span>Overall</span><b id="overall">7.0</b><small>/10</small></div>
+
+    <details class="more" id="comment-wrap">
+      <summary>Add a comment (optional)</summary>
+      <textarea id="rate-comment" maxlength="280" placeholder="Anything worth knowing? Big portions, great garlic sauce…"></textarea>
+    </details>
+
+    <div class="photo-pick">
+      <label class="photo-btn" for="rate-photo" id="rate-photo-label">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3 7.2 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3H9zm3 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
+        <span>Add a photo (optional)</span>
+      </label>
+      <input type="file" id="rate-photo" accept="image/*" hidden>
+      <div class="photo-preview" id="rate-photo-preview" hidden>
+        <img id="rate-photo-img" alt="Your kebab photo">
+        <button type="button" class="photo-x" id="rate-photo-remove" aria-label="Remove photo">×</button>
+      </div>
+    </div>
+
+    <div class="msg" id="rate-msg" hidden></div>
+    <div class="actions">
+      <button class="btn wide" id="rate-save" type="submit">Save rating</button>
+    </div>
+    <button type="button" class="auth-switch" id="rate-delete" hidden>Remove my rating</button>
+  </form>
+</dialog>
+
+<dialog class="auth" id="addshop">
+  <form class="auth-in" id="addshop-form" novalidate>
+    <button type="button" class="x" id="addshop-close" aria-label="Close">×</button>
+    <div>
+      <h2>Add a missing shop</h2>
+      <p>Found a kebab shop that isn't on the map? Add it so you and everyone else can rate it.</p>
+    </div>
+    <div class="field"><label for="as-name">Shop name</label><input id="as-name" maxlength="80" placeholder="e.g. Sultan's Kebabs"></div>
+    <div class="field"><label for="as-town">Town or suburb</label><input id="as-town" maxlength="60" placeholder="e.g. Riccarton, Christchurch"></div>
+    <div class="field">
+      <span class="qlabel">Where is it?</span>
+      <div class="loc-btns">
+        <button type="button" class="btn ghost" id="as-here">Use where I am now</button>
+        <button type="button" class="btn ghost" id="as-pick">Tap it on the map</button>
+      </div>
+      <p class="fine" id="as-loc">No location set yet.</p>
+    </div>
+    <div class="field"><label for="as-region">Region</label><select id="as-region"></select></div>
+    <div class="msg" id="as-msg" hidden></div>
+    <button class="btn wide" id="as-save" type="submit">Add shop</button>
+  </form>
+</dialog>
+<div class="pickbar" id="pickbar" hidden><span>Tap the map where the shop is</span><button type="button" class="btn ghost" id="pick-cancel">Cancel</button></div>
+
+<dialog class="auth card-dlg" id="card">
+  <div class="auth-in">
+    <button type="button" class="x" id="card-close" aria-label="Close">×</button>
+    <div class="card-head"><span class="avatar" id="card-avatar"></span><div><b id="card-name"></b><small id="card-clock"></small></div></div>
+    <div class="card-qr-wrap" id="card-ring"><canvas id="card-qr" aria-label="Your card code for the shop to scan"></canvas></div>
+    <p class="card-hint">Show this to the shop when you order. The code refreshes every 30 seconds.</p>
+    <p class="fine" id="card-status"></p>
+    <div class="card-result" id="card-result" hidden></div>
+    <div id="card-rate"></div>
+    <p class="card-rule" id="card-rule"></p>
+    <div class="qlabel">Your kebab passport</div>
+    <div class="passport" id="card-passport"></div>
+    <div class="pbadges" id="card-badges"></div>
+    <div class="qlabel">Your stamp cards</div>
+    <div id="card-cards"></div>
+  </div>
+</dialog>
+
+<dialog class="auth admin-partner" id="partner-dlg">
+  <div class="auth-in">
+    <button type="button" class="x" id="partner-close" aria-label="Close">×</button>
+    <div><h2 id="partner-title">Partner settings</h2><p id="partner-where"></p></div>
+    <div class="ap-body"></div>
+  </div>
+</dialog>
+
+<dialog class="lightbox" id="lightbox"><img id="lb-img" alt=""><p id="lb-cap"></p></dialog>
+
+<script src="vendor/maplibre-gl.js"></script>
+<script src="vendor/supercluster.min.js"></script>
+<script src="vendor/supabase.js"></script>
+<script src="vendor/qrcode.js"></script>
+<script src="app.js?v=202611181621"></script>
+</body>
+</html>
