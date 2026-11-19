@@ -55,7 +55,6 @@ const VIS = () => SHOPS.filter(s => mode === "monaco" ? isMon(s) : ((showMon || 
 // The number on a pin: Monaco's score on his shops, everyone's average on the rest
 const ps = s => (mode === "monaco" || isMon(s)) ? s.score : (STATS[s.id]?.avg ?? null);
 const TOP = new Set();
-const MARKERS = {};   // shop id -> map marker currently on screen
 const SHOP_BY_ID = () => Object.fromEntries(SHOPS.map(s => [s.id, s]));
 
 // ---------- Map ----------
@@ -97,76 +96,89 @@ map.on("style.load", () => {
     } else if (l.type === "hillshade" || l.type === "fill-extrusion") { try { map.setLayoutProperty(id, "visibility", "none"); } catch {} }
   }
 });
-map.on("moveend", drawMarkers);
 map.on("load", () => {
-  map.resize(); map.fitBounds(NZ_BOUNDS, { padding: 24, duration: 0 }); drawMarkers();
+  map.resize(); map.fitBounds(NZ_BOUNDS, { padding: 24, duration: 0 });
+  addShopLayers();
   // Keep the map credits folded into the small (i) button until tapped
   document.querySelectorAll(".maplibregl-ctrl-attrib.maplibregl-compact-show").forEach(e => e.classList.remove("maplibregl-compact-show"));
 });
 
-// Clustering: Supercluster groups nearby shops; markers are redrawn when the map settles
-let index = null, drawn = new Map();
-function pinHtml(s) {
-  const v = ps(s), monBadge = mode === "discover" && isMon(s);
-  const label = v == null ? (mode === "discover" && !isMon(s) ? "+" : "?") : fmt(v);
-  const cls = ["pin", "tier-" + tier(v)];
-  if (TOP.has(s.id)) cls.push("top");
-  if (monBadge) cls.push("monb");
-  if (isPartner(s)) cls.push("partner");
-  if (v == null && mode === "discover") cls.push("fresh");
-  if (openPopup?.shopId === s.id) cls.push("sel");
-  return `<div class="${cls.join(" ")}"><b>${label}</b></div>`;
+// ---------- Shop pins ----------
+// Drawn by the map itself (GPU), not as HTML: every shop is a tiny dot when zoomed out and grows
+// smoothly into a score bubble as you zoom in, with no clustering jumps.
+const TIER_COL = { "9": "#0B7A43", "8": "#1FAF55", "7": "#9CD33B", "5": "#FF8A1F", "0": "#E5243B", "n": "#9AA3BF" };
+const GOLD = "#FFC21A", MON_RING = "#6B3CFF";
+let shopData = { type: "FeatureCollection", features: [] }, selId = null;
+// Size by zoom: tiny at country view, score bubble from about city view
+const R = (a, b, c, d, e) => ["interpolate", ["exponential", 1.5], ["zoom"], 4, a, 7, b, 10, c, 12.5, d, 15, e];
+function shopFeatures() {
+  return VIS().map(s => {
+    const v = ps(s), fresh = v == null && mode === "discover" && !isMon(s);
+    return { type: "Feature", id: undefined, geometry: { type: "Point", coordinates: [s.lng, s.lat] },
+      properties: { id: s.id, v: v ?? -1, col: fresh ? "#FFFFFF" : TIER_COL[tier(v)],
+        ink: fresh ? "#6B7390" : tier(v) === "7" ? "#1F3B06" : "#FFFFFF",
+        ring: TOP.has(s.id) || isPartner(s) ? GOLD : (mode === "discover" && isMon(s)) ? MON_RING : fresh ? "#9AA3BF" : "#FFFFFF",
+        special: TOP.has(s.id) || isPartner(s) ? 1 : 0,
+        label: v == null ? (fresh ? "+" : "?") : fmt(v), name: s.name } };
+  });
 }
-const pinIcon = pinHtml;
-function clusterHtml(p) {
-  const best = p.best >= 0 ? p.best : null, n = p.point_count;
-  const small = window.innerWidth <= 820;
-  const size = Math.round((small ? 34 : 40) + Math.min(n, 60) * (small ? 0.3 : 0.4));
-  return `<div class="clus tier-${tier(best)}" style="--s:${size}px"><b>${p.point_count_abbreviated}</b>${best != null ? `<span>top ${fmt(best)}</span>` : ""}</div>`;
+function addShopLayers() {
+  if (map.getSource("shops")) return;
+  const fontLayer = map.getStyle().layers.find(l => l.type === "symbol" && l.layout?.["text-font"]);
+  const fonts = fontLayer?.layout["text-font"];
+  const bold = Array.isArray(fonts) && fonts.length ? [fonts[0].replace(/Regular|Italic/, "Bold")] : ["Noto Sans Bold"];
+  map.addSource("shops", { type: "geojson", data: shopData, promoteId: "id" });
+  // Gold glow behind top picks and partners
+  map.addLayer({ id: "shop-glow", type: "circle", source: "shops", filter: ["==", ["get", "special"], 1], paint: {
+    "circle-color": GOLD, "circle-opacity": 0.35, "circle-blur": 0.4,
+    "circle-radius": R(4, 6, 11, 20, 26) } });
+  map.addLayer({ id: "shop-dot", type: "circle", source: "shops", layout: { "circle-sort-key": ["+", ["get", "v"], ["*", 20, ["get", "special"]]] }, paint: {
+    "circle-color": ["get", "col"],
+    "circle-radius": R(...[2.2, 3.6, 6.5, 13, 17].map(r => ["*", r, ["case", ["boolean", ["feature-state", "sel"], false], 1.3, ["boolean", ["feature-state", "hover"], false], 1.15, 1]])),
+    "circle-stroke-color": ["get", "ring"],
+    "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 4, 0.6, 8, 1.2, 12, 2.5, 15, 3],
+    "circle-radius-transition": { duration: 180 },
+    "circle-pitch-alignment": "map" } });
+  // Score number appears inside the bubble once there's room for it
+  map.addLayer({ id: "shop-label", type: "symbol", source: "shops", minzoom: 9.6, layout: {
+    "text-field": ["get", "label"], "text-font": bold, "text-allow-overlap": true, "text-ignore-placement": true,
+    "text-size": ["interpolate", ["linear"], ["zoom"], 9.6, 7, 12.5, 12, 15, 14.5],
+    "symbol-sort-key": ["+", ["get", "v"], ["*", 20, ["get", "special"]]] }, paint: {
+    "text-color": ["get", "ink"], "text-opacity": ["interpolate", ["linear"], ["zoom"], 9.6, 0, 10.4, 1] } });
+  let hovered = null;
+  const setHover = id => { if (hovered === id) return; if (hovered) map.setFeatureState({ source: "shops", id: hovered }, { hover: false }); hovered = id; if (id) map.setFeatureState({ source: "shops", id }, { hover: true }); };
+  // Generous tap target: find the nearest shop within a finger's width of the tap
+  const pickAt = pt => {
+    const r = window.innerWidth <= 820 ? 16 : 11;
+    const feats = map.queryRenderedFeatures([[pt.x - r, pt.y - r], [pt.x + r, pt.y + r]], { layers: ["shop-dot"] });
+    let best = null, bd = Infinity;
+    for (const f of feats) { const q = map.project(f.geometry.coordinates), d = (q.x - pt.x) ** 2 + (q.y - pt.y) ** 2; if (d < bd) { bd = d; best = f; } }
+    return best;
+  };
+  map.on("mousemove", e => { if (picking) return; const f = pickAt(e.point); setHover(f?.properties.id || null); map.getCanvas().style.cursor = f ? "pointer" : ""; });
+  map.on("mouseout", () => setHover(null));
+  map.on("click", e => {
+    if (picking) return;
+    const f = pickAt(e.point); if (!f) return;
+    e.originalEvent.stopPropagation?.();
+    openShop(f.properties.id);
+  });
+  setShopData();
 }
-function buildMarkers() {
-  computeTop();
-  const feats = VIS().map(s => ({ type: "Feature", properties: { id: s.id, v: ps(s) }, geometry: { type: "Point", coordinates: [s.lng, s.lat] } }));
-  index = new Supercluster({ radius: 52, maxZoom: 13, minPoints: 3,
-    map: p => ({ best: p.v ?? -1 }), reduce: (a, b) => { a.best = Math.max(a.best, b.best); } }).load(feats);
-  for (const [, d] of drawn) d.marker.remove();
-  drawn = new Map();
+function setShopData() {
+  shopData = { type: "FeatureCollection", features: shopFeatures() };
+  const src = map.getSource("shops"); if (src) src.setData(shopData);
   drawMarkers();
 }
+// Selected shop: a slightly bigger pin
 function drawMarkers() {
-  if (!index) return;
-  const b = map.getBounds(), z = Math.floor(map.getZoom());
-  const pad = (b.getEast() - b.getWest()) * 0.25;
-  const items = index.getClusters([b.getWest() - pad, Math.max(-85, b.getSouth() - pad), b.getEast() + pad, Math.min(85, b.getNorth() + pad)], z);
-  const byId = SHOP_BY_ID(), next = new Map();
-  for (const f of items) {
-    const p = f.properties, isC = !!p.cluster, key = isC ? "cluster:" + p.cluster_id : "shop:" + p.id;
-    const s = isC ? null : byId[p.id]; if (!isC && !s) continue;
-    const html = isC ? clusterHtml(p) : pinHtml(s);
-    const old = drawn.get(key);
-    if (old && old.html === html) { next.set(key, old); drawn.delete(key); continue; }
-    if (old) { old.marker.remove(); drawn.delete(key); }
-    const el = document.createElement("div");
-    el.className = "mk " + (isC ? "mk-c" : "mk-s");
-    el.innerHTML = html;
-    el.tabIndex = 0; el.setAttribute("role", "button");
-    el.setAttribute("aria-label", isC ? `${p.point_count} shops here, zoom in` : `${s.name}, ${s.town}`);
-    if (!isC) el.title = `${s.name} · ${s.town}`;
-    const go = ev => { ev.stopPropagation(); isC ? zoomCluster(p.cluster_id, f.geometry.coordinates) : openShop(p.id); };
-    el.addEventListener("click", go);
-    el.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); go(ev); } });
-    const marker = new maplibregl.Marker({ element: el, anchor: isC ? "center" : "bottom" }).setLngLat(f.geometry.coordinates).addTo(map);
-    next.set(key, { marker, html });
-  }
-  for (const [, d] of drawn) d.marker.remove();
-  drawn = next;
-  for (const k in MARKERS) delete MARKERS[k];
-  for (const [k, d] of drawn) if (k.startsWith("shop:")) MARKERS[k.slice(5)] = d.marker;
+  if (!map.getSource("shops")) return;
+  const want = openPopup?.shopId || null;
+  if (selId && selId !== want) map.setFeatureState({ source: "shops", id: selId }, { sel: false });
+  if (want) map.setFeatureState({ source: "shops", id: want }, { sel: true });
+  selId = want;
 }
-function zoomCluster(id, center) {
-  const z = Math.min(index.getClusterExpansionZoom(id) + 0.3, 16);
-  map.easeTo({ center, zoom: z, duration: 650 });
-}
+function buildMarkers() { computeTop(); setShopData(); }
 function refreshPins() { buildMarkers(); }
 function computeTop() {
   TOP.clear();
@@ -229,7 +241,7 @@ function popupHtml(s) {
 
 // One shop card at a time, anchored to the shop's pin
 const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: "330px", focusAfterOpen: false,
-  offset: { "bottom": [0, -46], "bottom-left": [0, -46], "bottom-right": [0, -46], "top": [0, 6], "top-left": [0, 6], "top-right": [0, 6], "left": [18, -24], "right": [-18, -24] } });
+  offset: 18 });
 let openPopup = null;
 popup.on("close", () => { const was = openPopup?.shopId; openPopup = null; if (was) drawMarkers(); });
 function showPopup(s) {
@@ -245,7 +257,7 @@ function showPopup(s) {
 }
 function closePopup() { if (popup.isOpen()) popup.remove(); }
 // Redraw just one pin (selected state) without touching the rest
-function rebuildPin(id) { for (const [k, d] of drawn) if (k === "shop:" + id || d.html.includes(" sel")) { d.html = ""; } drawMarkers(); }
+function rebuildPin() { drawMarkers(); }
 function refreshPopup(s) {
   if (!openPopup || !popup.isOpen()) return;
   popup.setHTML(popupHtml(s));
