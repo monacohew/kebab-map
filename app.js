@@ -128,21 +128,26 @@ function addShopLayers() {
   const fonts = fontLayer?.layout["text-font"];
   const bold = Array.isArray(fonts) && fonts.length ? [fonts[0].replace(/Regular|Italic/, "Bold")] : ["Noto Sans Bold"];
   map.addSource("shops", { type: "geojson", data: shopData, promoteId: "id" });
+  // Soft dark shadow under every pin so it lifts off the yellow land
+  map.addLayer({ id: "shop-shadow", type: "circle", source: "shops", paint: {
+    "circle-color": "#2A1A00", "circle-opacity": ["interpolate", ["linear"], ["zoom"], 4, 0.35, 12, 0.28], "circle-blur": 0.6,
+    "circle-translate": [0, 1.5],
+    "circle-radius": R(5.5, 7.5, 11, 18, 23) } });
   // Gold glow behind top picks and partners
   map.addLayer({ id: "shop-glow", type: "circle", source: "shops", filter: ["==", ["get", "special"], 1], paint: {
-    "circle-color": GOLD, "circle-opacity": 0.35, "circle-blur": 0.4,
-    "circle-radius": R(4, 6, 11, 20, 26) } });
+    "circle-color": GOLD, "circle-opacity": 0.55, "circle-blur": 0.35,
+    "circle-radius": R(8, 10, 15, 24, 30) } });
   map.addLayer({ id: "shop-dot", type: "circle", source: "shops", layout: { "circle-sort-key": ["+", ["get", "v"], ["*", 20, ["get", "special"]]] }, paint: {
     "circle-color": ["get", "col"],
-    "circle-radius": R(...[2.2, 3.6, 6.5, 13, 17].map(r => ["*", r, ["case", ["boolean", ["feature-state", "sel"], false], 1.3, ["boolean", ["feature-state", "hover"], false], 1.15, 1]])),
+    "circle-radius": R(...[4.2, 5.6, 8.5, 14, 18].map(r => ["*", r, ["case", ["boolean", ["feature-state", "sel"], false], 1.3, ["boolean", ["feature-state", "hover"], false], 1.15, 1]])),
     "circle-stroke-color": ["get", "ring"],
-    "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 4, 0.6, 8, 1.2, 12, 2.5, 15, 3],
+    "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 4, 1.6, 8, 2, 12, 2.8, 15, 3.2],
     "circle-radius-transition": { duration: 180 },
     "circle-pitch-alignment": "map" } });
   // Score number appears inside the bubble once there's room for it
   map.addLayer({ id: "shop-label", type: "symbol", source: "shops", minzoom: 9.6, layout: {
     "text-field": ["get", "label"], "text-font": bold, "text-allow-overlap": true, "text-ignore-placement": true,
-    "text-size": ["interpolate", ["linear"], ["zoom"], 9.6, 7, 12.5, 12, 15, 14.5],
+    "text-size": ["interpolate", ["linear"], ["zoom"], 9.6, 8.5, 12.5, 13, 15, 15],
     "symbol-sort-key": ["+", ["get", "v"], ["*", 20, ["get", "special"]]] }, paint: {
     "text-color": ["get", "ink"], "text-opacity": ["interpolate", ["linear"], ["zoom"], 9.6, 0, 10.4, 1] } });
   let hovered = null;
