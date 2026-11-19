@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="vendor/maplibre-gl.css">
-<link rel="stylesheet" href="style.css?v=202611181636">
+<link rel="stylesheet" href="style.css?v=202611191644">
 </head>
 <body>
 <div class="app">
@@ -188,8 +188,14 @@
     </div>
     <div class="field"><label for="as-name">Shop name</label><input id="as-name" maxlength="80" placeholder="e.g. Sultan's Kebabs"></div>
     <div class="field"><label for="as-town">Town or suburb</label><input id="as-town" maxlength="60" placeholder="e.g. Riccarton, Christchurch"></div>
+    <p class="fine dup-hint" id="as-dup" hidden></p>
     <div class="field">
       <span class="qlabel">Where is it?</span>
+      <div class="paste-row">
+        <textarea id="as-paste" rows="2" placeholder="Paste from Google Maps: a link, the address, or coordinates like -40.2234, 175.5682"></textarea>
+        <button type="button" class="btn" id="as-find">Find</button>
+      </div>
+      <p class="fine">In Google Maps tap Share then Copy, or copy the address. Or:</p>
       <div class="loc-btns">
         <button type="button" class="btn ghost" id="as-here">Use where I am now</button>
         <button type="button" class="btn ghost" id="as-pick">Tap it on the map</button>
@@ -235,6 +241,6 @@
 <script src="vendor/supercluster.min.js"></script>
 <script src="vendor/supabase.js"></script>
 <script src="vendor/qrcode.js"></script>
-<script src="app.js?v=202611181636"></script>
+<script src="app.js?v=202611191644"></script>
 </body>
 </html>

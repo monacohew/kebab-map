@@ -496,3 +496,23 @@ dialog.admin-partner .ap-row input[type=checkbox] { width: 22px; height: 22px; }
 @keyframes cardin { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .picking .maplibregl-canvas { cursor: crosshair; }
 @media (prefers-reduced-motion: reduce) { .mk-s .pin, .mk-c .clus, .maplibregl-popup .pop { animation: none; } }
+
+/* Rating parts: on/off switch per part */
+.sc-help { margin: 0 0 -4px; }
+.sc { grid-template-columns: auto 1fr auto; }
+.sc input[type=range] { grid-column: 1 / -1; }
+.sc.off .lab { color: var(--muted); }
+.sw { position: relative; width: 40px; height: 24px; flex: none; cursor: pointer; }
+.sw input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.sw i { position: absolute; inset: 0; border-radius: 999px; background: var(--line); transition: background .15s; }
+.sw i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .15s; }
+.sw input:checked + i { background: var(--accent); }
+.sw input:checked + i::after { transform: translateX(16px); }
+.sw input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Add a shop: paste from Google Maps */
+.paste-row { display: flex; gap: 8px; align-items: stretch; }
+.paste-row textarea { flex: 1; min-width: 0; resize: vertical; font: inherit; font-size: .9rem; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.paste-row .btn { flex: none; }
+.more-matches { margin-top: 10px; }
+.dup-hint { background: #FFF4D6; color: #5A3B00; border-radius: 10px; padding: 8px 10px; margin: -4px 0 0; }
+.linkish { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; color: var(--accent); text-decoration: underline; cursor: pointer; }

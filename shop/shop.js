@@ -162,7 +162,7 @@ document.querySelector(".range").addEventListener("click", e => {
   document.querySelectorAll(".range button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
   loadStats();
 });
-const PARTS = [["meat", "Meat"], ["sauce", "Sauce"], ["bread", "Bread & wrap"], ["value", "Value"]];
+const PARTS = [["meat", "Meat"], ["sauce", "Sauce"], ["bread", "Bread & wrap"], ["salad", "Salad"], ["value", "Value"]];
 async function loadStats() {
   $("stats-body").innerHTML = `<p class="fine">Loading your numbers…</p>`;
   const { data: r, error } = await sb.rpc("shop_report", { p_shop: shopId, p_days: days });
@@ -175,7 +175,8 @@ async function loadStats() {
   let cmp = "", tips = [];
   if (r.ratings?.n) {
     cmp = `<div class="cmp"><span class="h"></span><span></span><span class="h">You</span><span class="h">Region</span>` + PARTS.map(([k, l]) => {
-      const you = Number(r.ratings[k]), reg = Number(r.region_avg?.[k]);
+      if (r.ratings[k] == null) return "";
+      const you = Number(r.ratings[k]), reg = r.region_avg?.[k] == null ? NaN : Number(r.region_avg[k]);
       const d = you - reg, cls = d >= 0.3 ? "up" : d <= -0.3 ? "down" : "";
       if (d >= 0.5) tips.push(`Your ${l.toLowerCase()} beats the regional average by ${d.toFixed(1)}. Shout about it!`);
       if (d <= -0.5) tips.push(`Your ${l.toLowerCase()} is ${Math.abs(d).toFixed(1)} below the regional average. Worth a look.`);

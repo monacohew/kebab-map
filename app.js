@@ -10,6 +10,7 @@ const PARTS = [
   ["meat", "Meat", "Taste, tenderness, how much you get"],
   ["sauce", "Sauce", "Flavour and balance"],
   ["bread", "Bread & wrap", "Fresh, toasted, holds together"],
+  ["salad", "Salad", "Fresh, crisp, not soggy"],
   ["value", "Value", "Size for the price"]
 ];
 const OPTIONS = {
@@ -39,7 +40,7 @@ function orderText(r) {
 
 // ---------- State ----------
 let SHOPS = [];        // {id,name,town,region,lat,lng,legacy,score}
-let STATS = {};        // shop_id -> {avg, n, meat, sauce, bread, value}
+let STATS = {};        // shop_id -> {avg, n, meat, sauce, bread, salad, value}
 let MON = {};          // shop_id -> Monaco's breakdown rating row
 let MINE = {};         // shop_id -> my rating row
 let ADMIN_IDS = [];
@@ -197,6 +198,7 @@ function partsHtml(s) {
   return `<div class="parts"><span class="ph"></span><span></span><span class="ph">Monaco</span><span class="ph">All</span>
     ${PARTS.map(([k, label]) => {
       const mv = mon ? num(mon[k]) : null, av = st ? st[k] : null;
+      if (mv == null && av == null) return "";
       return `<span>${label}</span><span class="bar"><i style="width:${((mv ?? av ?? 0) * 10).toFixed(0)}%"></i></span><b>${fmt1(mv)}</b><em>${fmt1(av)}</em>`;
     }).join("")}</div>`;
 }
@@ -354,7 +356,11 @@ $("rate-photo").addEventListener("change", async () => {
   catch { $("rate-msg").textContent = "That photo couldn't be opened. Try a JPG or PNG."; $("rate-msg").className = "msg err"; $("rate-msg").hidden = false; }
 });
 $("rate-photo-remove").onclick = () => { ratePhoto = null; rateRemovePhoto = true; $("rate-photo").value = ""; showRatePhoto(null); };
-const draft = { style: null, meats: [], sauces: [], salads: [], meat: 7, sauce: 7, bread: 7, value: 7 };
+const PART_KEYS = PARTS.map(p => p[0]);
+const freshDraft = () => ({ style: null, meats: [], sauces: [], salads: [], meat: 7, sauce: 7, bread: 7, salad: 7, value: 7, on: Object.fromEntries(PART_KEYS.map(k => [k, true])), touched: {} });
+const draft = freshDraft();
+// No bread or wrap with these, so switch that part off unless the person has set it themselves
+const NO_BREAD = new Set(["chips", "rice", "plate", "snack_pack"]);
 
 function renderPills() {
   document.querySelectorAll("#rate .pills").forEach(box => {
@@ -366,17 +372,28 @@ function renderPills() {
   });
 }
 function renderScores() {
-  $("scores").innerHTML = PARTS.map(([k, label, hint]) => `
-    <div class="sc">
-      <span class="lab">${label}<small>${hint}</small></span>
-      <span class="val"><button type="button" class="step" data-k="${k}" data-d="-0.1" aria-label="${label} down 0.1">−</button><output id="o-${k}">${fmt1(draft[k])}</output><button type="button" class="step" data-k="${k}" data-d="0.1" aria-label="${label} up 0.1">+</button></span>
-      <input type="range" id="s-${k}" data-k="${k}" min="0.1" max="10" step="0.1" value="${draft[k]}" aria-label="${label} score">
-    </div>`).join("");
+  $("scores").innerHTML = `<p class="fine sc-help">Switch off anything you didn't have. It won't count towards your score.</p>` + PARTS.map(([k, label, hint]) => {
+    const on = draft.on[k];
+    return `
+    <div class="sc${on ? "" : " off"}" id="sc-${k}">
+      <label class="sw"><input type="checkbox" data-on="${k}" ${on ? "checked" : ""} aria-label="Rate the ${label.toLowerCase()}"><i></i></label>
+      <span class="lab">${label}<small>${on ? hint : "Didn't have it, not rated"}</small></span>
+      <span class="val"${on ? "" : " hidden"}><button type="button" class="step" data-k="${k}" data-d="-0.1" aria-label="${label} down 0.1">−</button><output id="o-${k}">${fmt1(draft[k])}</output><button type="button" class="step" data-k="${k}" data-d="0.1" aria-label="${label} up 0.1">+</button></span>
+      <input type="range" id="s-${k}" data-k="${k}" min="0.1" max="10" step="0.1" value="${draft[k]}" aria-label="${label} score"${on ? "" : " hidden"}>
+    </div>`;
+  }).join("");
   updateOverall();
 }
+function partsOn() { return PART_KEYS.filter(k => draft.on[k]); }
 function updateOverall() {
-  const avg = (draft.meat + draft.sauce + draft.bread + draft.value) / 4;
-  $("overall").textContent = fmt1(round1(avg));
+  const on = partsOn();
+  $("overall").textContent = on.length ? fmt1(round1(on.reduce((t, k) => t + draft[k], 0) / on.length)) : "–";
+  $("rate-save").disabled = !on.length;
+}
+function setPartOn(k, on, byUser) {
+  draft.on[k] = on;
+  if (byUser) draft.touched[k] = true;
+  renderScores();
 }
 function setScore(k, v) {
   draft[k] = Math.min(10, Math.max(0.1, round1(v)));
@@ -388,8 +405,10 @@ function openRate(s) {
   rateShop = s;
   const mine = MINE[s.id];
   Object.assign(draft, mine
-    ? { style: mine.style, meats: [...(mine.meats || [])], sauces: [...(mine.sauces || [])], salads: [...(mine.salads || [])], meat: num(mine.meat), sauce: num(mine.sauce), bread: num(mine.bread), value: num(mine.value) }
-    : { style: null, meats: [], sauces: [], salads: [], meat: 7, sauce: 7, bread: 7, value: 7 });
+    ? { style: mine.style, meats: [...(mine.meats || [])], sauces: [...(mine.sauces || [])], salads: [...(mine.salads || [])],
+        ...Object.fromEntries(PART_KEYS.map(k => [k, mine[k] == null ? 7 : num(mine[k])])),
+        on: Object.fromEntries(PART_KEYS.map(k => [k, mine[k] != null])), touched: Object.fromEntries(PART_KEYS.map(k => [k, true])) }
+    : freshDraft());
   $("rate-title").textContent = mine ? "Edit your rating" : "Rate this kebab";
   $("rate-where").textContent = `${s.name} · ${s.town}`;
   $("rate-comment").value = mine?.comment || "";
@@ -411,19 +430,23 @@ $("rate").addEventListener("click", e => {
     const box = pill.parentElement, f = box.dataset.field, v = pill.dataset.v;
     if (box.hasAttribute("data-single")) draft[f] = draft[f] === v ? null : v;
     else draft[f] = draft[f].includes(v) ? draft[f].filter(x => x !== v) : [...draft[f], v];
-    renderPills(); return;
+    renderPills();
+    if (f === "style" && !draft.touched.bread) setPartOn("bread", !NO_BREAD.has(draft.style));
+    return;
   }
   const step = e.target.closest(".step");
   if (step) { setScore(step.dataset.k, draft[step.dataset.k] + parseFloat(step.dataset.d)); return; }
   if (e.target === $("rate")) $("rate").close(); // tap outside the card
 });
 $("rate").addEventListener("input", e => { if (e.target.matches("input[type=range]")) setScore(e.target.dataset.k, parseFloat(e.target.value)); });
+$("rate").addEventListener("change", e => { const k = e.target.dataset?.on; if (k) setPartOn(k, e.target.checked, true); });
 $("rate-close").onclick = () => $("rate").close();
 
 $("rate-form").addEventListener("submit", async ev => {
   ev.preventDefault();
   const s = rateShop, existing = MINE[s.id];
-  const fields = { meat: draft.meat, sauce: draft.sauce, bread: draft.bread, value: draft.value, style: draft.style, meats: draft.meats, sauces: draft.sauces, salads: draft.salads, comment: $("rate-comment").value.trim() || null };
+  if (!partsOn().length) return;
+  const fields = { ...Object.fromEntries(PART_KEYS.map(k => [k, draft.on[k] ? draft[k] : null])), style: draft.style, meats: draft.meats, sauces: draft.sauces, salads: draft.salads, comment: $("rate-comment").value.trim() || null };
   $("rate-save").disabled = true; $("rate-save").textContent = ratePhoto ? "Uploading photo…" : "Saving…";
   const oldPhoto = existing?.photo_url || null;
   if (ratePhoto) {
@@ -539,7 +562,7 @@ function render() {
     });
   } else {
     const q = $("search").value.trim().toLowerCase();
-    let list = inRegion.filter(s => !q || (s.name + " " + s.town).toLowerCase().includes(q));
+    let list = inRegion.filter(s => matchesSearch(s, q));
     if (todoOnly) list = list.filter(s => s.source === "monaco" && !MON[s.id]);
     if (mineOnly) list = list.filter(s => MINE[s.id]);
     if (mineOnly) html += `<div class="adminbar"><span>Showing the <strong>${list.length}</strong> kebabs you've rated</span><button class="btn ghost" type="button" id="mine-off">Show all</button></div>`;
@@ -551,11 +574,29 @@ function render() {
     }[todoOnly ? "north" : $("sort").value];
     list.sort(cmp);
     html += list.length ? list.map(rowHtml).join("") : `<p class="empty">${q ? `No shops match "${esc(q)}".` : "Nothing here."}</p>`;
+    // In Monaco's mode the list only has his shops, so point to matches in all NZ shops
+    if (q && mode !== "discover") {
+      const more = SHOPS.filter(s => !list.includes(s) && (activeRegion === "All" || s.region === activeRegion) && matchesSearch(s, q)).length;
+      if (more) html += `<button class="btn ghost wide more-matches" type="button" id="search-discover">See ${more} more match${more === 1 ? "" : "es"} in all NZ shops</button>`;
+    }
   }
   $("list").innerHTML = html || `<p class="empty">No shops here yet.</p>`;
   renderCompare();
   renderAccount();
 }
+
+// Search: ignores accents, treats "&" and "and" the same, matches words in any order,
+// and forgives the common Feilding/Fielding mix-up (ie vs ei)
+const normQ = t => " " + String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").replace(/ie/g, "ei").trim() + " ";
+function matchesSearch(s, q) {
+  if (!q) return true;
+  const hay = normQ(`${s.name} ${s.town} ${s.address || ""} ${s.region}`);
+  return normQ(q).trim().split(" ").filter(w => w && w !== "and").every(w => hay.includes(w));
+}
+document.addEventListener("click", e => {
+  if (e.target.id !== "search-discover") return;
+  setMode("discover");
+});
 
 function renderCompare() {
   if (!session) {
@@ -578,7 +619,10 @@ function renderCompare() {
   const withParts = rated.filter(s => MON[s.id]);
   let partLine = "";
   if (withParts.length >= 2) {
-    const diffs = PARTS.map(([k, label]) => [label, withParts.reduce((t, s) => t + (num(MINE[s.id][k]) - num(MON[s.id][k])), 0) / withParts.length]);
+    const diffs = PARTS.map(([k, label]) => {
+      const both = withParts.filter(s => MINE[s.id][k] != null && MON[s.id][k] != null);
+      return [label, both.length >= 2 ? both.reduce((t, s) => t + (num(MINE[s.id][k]) - num(MON[s.id][k])), 0) / both.length : 0];
+    });
     const [label, d] = diffs.reduce((a, b) => Math.abs(b[1]) > Math.abs(a[1]) ? b : a);
     if (Math.abs(d) >= 0.3) partLine = `<p>You're ${d > 0 ? "kinder" : "tougher"} than Monaco on <strong>${label.toLowerCase()}</strong>, by ${fmt1(Math.abs(round1(d)))} on average.</p>`;
   }
@@ -744,7 +788,7 @@ async function loadMonaco() {
 async function loadStats() {
   const { data } = await sb.from("shop_stats").select("*");
   STATS = {};
-  (data || []).forEach(r => STATS[r.shop_id] = { avg: num(r.avg_score), n: r.rating_count, meat: num(r.avg_meat), sauce: num(r.avg_sauce), bread: num(r.avg_bread), value: num(r.avg_value) });
+  (data || []).forEach(r => STATS[r.shop_id] = { avg: num(r.avg_score), n: r.rating_count, meat: num(r.avg_meat), sauce: num(r.avg_sauce), bread: num(r.avg_bread), salad: num(r.avg_salad), value: num(r.avg_value) });
 }
 async function loadMine() {
   MINE = {}; profile = null; shopsIStaff = []; TRIED = [];
@@ -895,20 +939,21 @@ function nearestRegion(lat, lng) {
   SHOPS.forEach(s => { const dd = (s.lat - lat) ** 2 + (s.lng - lng) ** 2; if (dd < d) { d = dd; best = s; } });
   return best?.region;
 }
-function setNewLoc(lat, lng, how) {
-  newLoc = { lat: Math.round(lat * 1e5) / 1e5, lng: Math.round(lng * 1e5) / 1e5 };
+function setNewLoc(lat, lng, how, address) {
+  newLoc = { lat: Math.round(lat * 1e5) / 1e5, lng: Math.round(lng * 1e5) / 1e5, address: address || null };
   const r = nearestRegion(lat, lng); if (r) $("as-region").value = r;
-  $("as-loc").textContent = `Location set (${how}).`;
+  $("as-loc").textContent = `Location set (${how})${address ? ": " + address : ""}.`;
   if (pickMarker) pickMarker.remove();
   const pe = document.createElement("div"); pe.className = "mk mk-s"; pe.innerHTML = '<div class="pin fresh sel"><b>+</b></div>';
   pickMarker = new maplibregl.Marker({ element: pe, anchor: "bottom" }).setLngLat([newLoc.lng, newLoc.lat]).addTo(map);
   map.easeTo({ center: [newLoc.lng, newLoc.lat], zoom: Math.max(map.getZoom(), 14), duration: 500 });
+  dupHint();
 }
 function asMsg(text, ok) { $("as-msg").textContent = text; $("as-msg").className = "msg " + (ok ? "ok" : "err"); $("as-msg").hidden = false; }
 $("add-shop").onclick = () => {
   if (!session) { openAuth("signup"); return; }
-  newLoc = null; $("as-name").value = ""; $("as-town").value = ""; $("as-loc").textContent = "No location set yet.";
-  $("as-msg").hidden = true; $("as-save").disabled = false;
+  newLoc = null; $("as-name").value = ""; $("as-town").value = ""; $("as-paste").value = ""; $("as-loc").textContent = "No location set yet.";
+  $("as-msg").hidden = true; $("as-save").disabled = false; $("as-dup").hidden = true;
   if (pickMarker) { pickMarker.remove(); pickMarker = null; }
   $("addshop").showModal();
 };
@@ -921,6 +966,92 @@ $("as-here").onclick = () => {
     () => { $("as-loc").textContent = "No location set yet."; asMsg("Couldn't get your location. Tap it on the map instead."); },
     { enableHighAccuracy: true, timeout: 10000 });
 };
+// Paste from Google Maps: a link, coordinates, an address, or the text Google's Share button copies
+const inNZ = (lat, lng) => lat > -47.6 && lat < -34 && lng > 166 && lng < 179;
+function coordsFrom(t) {
+  const pats = [/!3d(-?\d{1,2}\.\d+)!4d(-?\d{1,3}\.\d+)/, /@(-?\d{1,2}\.\d+),\s*(-?\d{1,3}\.\d+)/,
+    /[?&](?:q|query|ll|destination|center)=(-?\d{1,2}\.\d+)(?:,|%2C)\s*(-?\d{1,3}\.\d+)/i,
+    /(-?\d{1,2}\.\d{3,})\s*[, ]\s*(-?\d{1,3}\.\d{3,})/];
+  for (const re of pats) {
+    const m = t.match(re); if (!m) continue;
+    let lat = +m[1], lng = +m[2];
+    if (lat > 0 && inNZ(-lat, lng)) lat = -lat; // "40.22 S" style without the minus
+    if (inNZ(lat, lng)) return { lat, lng };
+  }
+  return null;
+}
+function townFrom(a) { return a?.suburb || a?.town || a?.city || a?.village || a?.hamlet || ""; }
+async function geocode(q) {
+  const u = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=nz&limit=1&q=${encodeURIComponent(q)}`;
+  const r = await fetch(u, { headers: { "Accept-Language": "en-NZ" } });
+  if (!r.ok) throw new Error("geocode " + r.status);
+  return (await r.json())[0] || null;
+}
+async function reverseTown(lat, lng) {
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=16&lat=${lat}&lon=${lng}`, { headers: { "Accept-Language": "en-NZ" } });
+    return r.ok ? townFrom((await r.json()).address) : "";
+  } catch { return ""; }
+}
+$("as-find").onclick = async () => {
+  const raw = $("as-paste").value.trim();
+  $("as-msg").hidden = true;
+  if (!raw) return asMsg("Paste a Google Maps link, the address, or the coordinates first.");
+  // Name from a full Google Maps link (…/maps/place/Kebab+%26+Chips/…)
+  const pm = raw.match(/\/maps\/place\/([^/@?]+)/);
+  if (pm && !$("as-name").value.trim()) $("as-name").value = decodeURIComponent(pm[1].replace(/\+/g, " ")).slice(0, 80);
+  const c = coordsFrom(raw);
+  if (c) {
+    setNewLoc(c.lat, c.lng, "from what you pasted");
+    if (!$("as-town").value.trim()) reverseTown(c.lat, c.lng).then(t => { if (t && !$("as-town").value.trim()) $("as-town").value = t; });
+    return;
+  }
+  // Google's Share text is usually "Name\nAddress\nhttps://maps.app.goo.gl/…": short links can't be opened from here, so use the address lines
+  const lines = raw.split(/\n+/).map(l => l.trim()).filter(l => l && !/^https?:/i.test(l));
+  if (!lines.length) return asMsg("That short Google link can't be opened from here. In Google Maps, copy the address (or press and hold the pin to copy its coordinates) and paste that instead.");
+  let addr = lines.find(l => /\d/.test(l) && /[a-z]{3}/i.test(l)) || lines[lines.length - 1];
+  if (lines.length > 1 && lines[0] !== addr && !$("as-name").value.trim()) $("as-name").value = lines[0].slice(0, 80);
+  $("as-find").disabled = true; $("as-loc").textContent = "Looking up that address…";
+  try {
+    let hit = await geocode(addr);
+    if (!hit && $("as-town").value.trim()) hit = await geocode(addr + ", " + $("as-town").value.trim());
+    if (!hit) { $("as-loc").textContent = newLoc ? $("as-loc").textContent : "No location set yet."; return asMsg("Couldn't find that address. Check the spelling, or paste the coordinates from Google Maps instead."); }
+    const lat = +hit.lat, lng = +hit.lon;
+    if (!inNZ(lat, lng)) return asMsg("That address isn't in New Zealand.");
+    const a = hit.address || {};
+    const street = [a.house_number, a.road].filter(Boolean).join(" ");
+    setNewLoc(lat, lng, "found the address", street || addr.split(",")[0]);
+    if (!$("as-town").value.trim()) { const t = townFrom(a); if (t) $("as-town").value = t; }
+  } catch (e) {
+    console.error(e); asMsg("Couldn't look up the address right now. Paste the coordinates instead, or tap it on the map.");
+    if (!newLoc) $("as-loc").textContent = "No location set yet.";
+  } finally { $("as-find").disabled = false; }
+};
+// Warn if the shop looks like one that's already on the map
+function dupHint() {
+  const name = $("as-name").value.trim(), town = $("as-town").value.trim();
+  const box = $("as-dup");
+  if (name.length < 3) { box.hidden = true; return; }
+  const words = normQ(name).trim().split(" ").filter(w => w.length > 2 && !["kebab", "kebabs", "turkish", "the", "and", "cafe", "grill", "house", "takeaways"].includes(w));
+  const hits = SHOPS.filter(s => {
+    const n = normQ(s.name);
+    const nameHit = words.length ? words.every(w => n.includes(" " + w)) : normQ(s.name).trim() === normQ(name).trim();
+    const townHit = !town || normQ(`${s.town} ${s.address || ""}`).includes(normQ(town).trim().split(" ")[0]) || (newLoc && Math.hypot(s.lat - newLoc.lat, s.lng - newLoc.lng) < 0.05);
+    return nameHit && townHit;
+  }).slice(0, 3);
+  box.hidden = !hits.length;
+  box.innerHTML = hits.length ? `Already on the map? ` + hits.map(s => `<button type="button" class="linkish" data-dup="${esc(s.id)}">${esc(s.name)}, ${esc(s.town)}</button>`).join(" · ") : "";
+}
+["as-name", "as-town"].forEach(id => $(id).addEventListener("input", dupHint));
+$("as-dup").addEventListener("click", e => {
+  const id = e.target.dataset?.dup; if (!id) return;
+  $("addshop").close(); if (pickMarker) { pickMarker.remove(); pickMarker = null; }
+  if (mode !== "discover") setMode("discover");
+  openShop(id);
+});
+$("as-paste").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("as-find").click(); } });
+$("as-paste").addEventListener("paste", () => setTimeout(() => $("as-find").click(), 0));
+
 $("as-pick").onclick = () => {
   picking = true; $("addshop").close();
   document.body.classList.add("picking"); $("pickbar").hidden = false;
@@ -935,12 +1066,12 @@ $("addshop-form").addEventListener("submit", async ev => {
   const name = $("as-name").value.trim(), town = $("as-town").value.trim(), region = $("as-region").value;
   if (name.length < 2) return asMsg("Add the shop's name.");
   if (town.length < 2) return asMsg("Add the town or suburb.");
-  if (!newLoc) return asMsg("Set where the shop is, either your location or a tap on the map.");
+  if (!newLoc) return asMsg("Set where the shop is: paste it from Google Maps, use your location, or tap the map.");
   if (newLoc.lat < -47.6 || newLoc.lat > -34 || newLoc.lng < 166 || newLoc.lng > 179) return asMsg("That spot isn't in New Zealand. Try tapping the map again.");
   const near = SHOPS.find(s => (s.lat - newLoc.lat) ** 2 + (s.lng - newLoc.lng) ** 2 < 0.0004 ** 2 * 4 && slug(s.name) === slug(name));
   if (near) return asMsg(`${near.name} in ${near.town} is already on the map.`);
   $("as-save").disabled = true; $("as-save").textContent = "Adding…";
-  const row = { id: `${slug(name + "-" + town)}-${Math.random().toString(36).slice(2, 6)}`, name, town, region, lat: newLoc.lat, lng: newLoc.lng, source: "user", added_by: session.user.id };
+  const row = { id: `${slug(name + "-" + town)}-${Math.random().toString(36).slice(2, 6)}`, name, town, region, lat: newLoc.lat, lng: newLoc.lng, address: newLoc.address || null, source: "user", added_by: session.user.id };
   const { error } = await sb.from("shops").insert(row);
   $("as-save").textContent = "Add shop";
   if (error) { console.error(error); $("as-save").disabled = false; return asMsg("Couldn't add the shop. Check your connection and try again."); }
