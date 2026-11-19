@@ -132,22 +132,22 @@ function addShopLayers() {
   map.addLayer({ id: "shop-shadow", type: "circle", source: "shops", paint: {
     "circle-color": "#2A1A00", "circle-opacity": ["interpolate", ["linear"], ["zoom"], 4, 0.35, 12, 0.28], "circle-blur": 0.6,
     "circle-translate": [0, 1.5],
-    "circle-radius": R(5.5, 7.5, 11, 18, 23) } });
+    "circle-radius": R(8.5, 8.5, 10.5, 15, 16.5) } });
   // Gold glow behind top picks and partners
   map.addLayer({ id: "shop-glow", type: "circle", source: "shops", filter: ["==", ["get", "special"], 1], paint: {
     "circle-color": GOLD, "circle-opacity": 0.55, "circle-blur": 0.35,
-    "circle-radius": R(8, 10, 15, 24, 30) } });
+    "circle-radius": R(11, 11, 13.5, 19, 21) } });
   map.addLayer({ id: "shop-dot", type: "circle", source: "shops", layout: { "circle-sort-key": ["+", ["get", "v"], ["*", 20, ["get", "special"]]] }, paint: {
     "circle-color": ["get", "col"],
-    "circle-radius": R(...[4.2, 5.6, 8.5, 14, 18].map(r => ["*", r, ["case", ["boolean", ["feature-state", "sel"], false], 1.3, ["boolean", ["feature-state", "hover"], false], 1.15, 1]])),
+    "circle-radius": R(...[6.5, 6.5, 8.5, 12, 13.5].map(r => ["*", r, ["case", ["boolean", ["feature-state", "sel"], false], 1.3, ["boolean", ["feature-state", "hover"], false], 1.15, 1]])),
     "circle-stroke-color": ["get", "ring"],
-    "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 4, 1.6, 8, 2, 12, 2.8, 15, 3.2],
+    "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 4, 2, 8, 2.2, 12, 2.6, 15, 3],
     "circle-radius-transition": { duration: 180 },
     "circle-pitch-alignment": "map" } });
   // Score number appears inside the bubble once there's room for it
   map.addLayer({ id: "shop-label", type: "symbol", source: "shops", minzoom: 9.6, layout: {
     "text-field": ["get", "label"], "text-font": bold, "text-allow-overlap": true, "text-ignore-placement": true,
-    "text-size": ["interpolate", ["linear"], ["zoom"], 9.6, 8.5, 12.5, 13, 15, 15],
+    "text-size": ["interpolate", ["linear"], ["zoom"], 9.6, 8.5, 12.5, 11.5, 15, 12.5],
     "symbol-sort-key": ["+", ["get", "v"], ["*", 20, ["get", "special"]]] }, paint: {
     "text-color": ["get", "ink"], "text-opacity": ["interpolate", ["linear"], ["zoom"], 9.6, 0, 10.4, 1] } });
   let hovered = null;
@@ -919,18 +919,54 @@ $("reset").onclick = () => { activeRegion = "All"; render(); flyTo("All"); close
 // ---------- Map controls ----------
 $("z-in").onclick = () => map.zoomIn({ duration: 300 });
 $("z-out").onclick = () => map.zoomOut({ duration: 300 });
-let meMarker = null;
+// Live location: a pulsing blue dot that follows you while the map is open
+let meMarker = null, watchId = null, firstFix = true, lastPos = null;
+function showMe(pos) {
+  $("locate").classList.remove("busy");
+  const ll = [pos.coords.longitude, pos.coords.latitude];
+  lastPos = ll;
+  if (!meMarker) {
+    const e = document.createElement("div"); e.className = "me-dot"; e.innerHTML = "<i></i>";
+    e.setAttribute("aria-label", "You are here");
+    meMarker = new maplibregl.Marker({ element: e }).setLngLat(ll).addTo(map);
+  } else meMarker.setLngLat(ll);
+  // Accuracy halo in screen pixels at the current zoom (hidden when it would be tiny or huge)
+  const mPerPx = 156543.03 * Math.cos(ll[1] * Math.PI / 180) / 2 ** map.getZoom();
+  const halo = Math.min(160, (pos.coords.accuracy || 0) / mPerPx);
+  meMarker.getElement().style.setProperty("--acc", (halo > 14 ? halo : 0) + "px");
+  if (firstFix) { firstFix = false; map.flyTo({ center: ll, zoom: Math.max(map.getZoom(), 12.5), speed: 1.6 }); }
+}
+function startLive(fly) {
+  if (!navigator.geolocation || watchId != null) return;
+  firstFix = fly; $("locate").classList.add("busy", "live");
+  watchId = navigator.geolocation.watchPosition(showMe, err => {
+    // Only give up if location is blocked; a weak signal now and then is normal, keep following
+    if (err.code === 1) { stopLive(); $("locate").title = "Location is blocked for this site. Allow it in your browser settings."; }
+    else if (!lastPos) $("locate").classList.remove("busy");
+  }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 });
+  try { localStorage.setItem("kebab.live", "1"); } catch {}
+}
+function stopLive() {
+  if (watchId != null) navigator.geolocation.clearWatch(watchId);
+  watchId = null; lastPos = null;
+  if (meMarker) { meMarker.remove(); meMarker = null; }
+  $("locate").classList.remove("busy", "live");
+  try { localStorage.removeItem("kebab.live"); } catch {}
+}
 $("locate").onclick = () => {
-  if (!navigator.geolocation) return;
-  $("locate").classList.add("busy");
-  navigator.geolocation.getCurrentPosition(pos => {
-    $("locate").classList.remove("busy");
-    const ll = [pos.coords.longitude, pos.coords.latitude];
-    if (!meMarker) { const e = document.createElement("div"); e.className = "me-dot"; meMarker = new maplibregl.Marker({ element: e }); }
-    meMarker.setLngLat(ll).addTo(map);
-    map.flyTo({ center: ll, zoom: 12.5, speed: 1.6 });
-  }, () => { $("locate").classList.remove("busy"); }, { enableHighAccuracy: true, timeout: 10000 });
+  if (watchId == null) return startLive(true);
+  // Already live: first tap re-centres on you, a tap when you're already centred turns it off
+  if (lastPos) {
+    const c = map.project(lastPos), m = map.getContainer();
+    if (Math.abs(c.x - m.clientWidth / 2) < 30 && Math.abs(c.y - m.clientHeight / 2) < 30) return stopLive();
+    map.flyTo({ center: lastPos, zoom: Math.max(map.getZoom(), 12.5), speed: 1.6 });
+  }
 };
+map.on("zoom", () => { if (meMarker && lastPos) meMarker.getElement().style.setProperty("--acc", "0px"); });
+// Turn it back on automatically if you had it on last time and the browser still allows it
+try {
+  if (localStorage.getItem("kebab.live") && navigator.permissions) navigator.permissions.query({ name: "geolocation" }).then(p => { if (p.state === "granted") startLive(false); }).catch(() => {});
+} catch {}
 
 // ---------- Discover ----------
 function setMode(m) {
