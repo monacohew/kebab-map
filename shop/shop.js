@@ -162,7 +162,7 @@ document.querySelector(".range").addEventListener("click", e => {
   document.querySelectorAll(".range button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
   loadStats();
 });
-const PARTS = [["meat", "Meat"], ["sauce", "Sauce"], ["bread", "Bread & wrap"], ["salad", "Salad"], ["value", "Value"]];
+const PARTS = [["meat", "Meat"], ["sauce", "Sauce"], ["bread", "Bread & wrap"], ["salad", "Salad"], ["value", "Value"], ["taste", "Overall taste"]];
 async function loadStats() {
   $("stats-body").innerHTML = `<p class="fine">Loading your numbers…</p>`;
   const { data: r, error } = await sb.rpc("shop_report", { p_shop: shopId, p_days: days });

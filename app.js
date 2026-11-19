@@ -11,8 +11,10 @@ const PARTS = [
   ["sauce", "Sauce", "Flavour and balance"],
   ["bread", "Bread & wrap", "Fresh, toasted, holds together"],
   ["salad", "Salad", "Fresh, crisp, not soggy"],
-  ["value", "Value", "Size for the price"]
+  ["value", "Value", "Size for the price"],
+  ["taste", "Overall taste", "How good it was, all things considered"]
 ];
+const MUST = new Set(["taste"]); // always rated, can't be switched off
 const OPTIONS = {
   style: [["wrap","Wrap"],["pide","Pide / bread"],["chips","On chips"],["rice","On rice"],["snack_pack","Snack pack"],["plate","Plate"],["other","Other"]],
   meats: [["lamb","Lamb"],["chicken","Chicken"],["beef","Beef"],["mixed","Mixed"],["falafel","Falafel"],["other","Other"]],
@@ -374,7 +376,7 @@ $("rate-photo").addEventListener("change", async () => {
 });
 $("rate-photo-remove").onclick = () => { ratePhoto = null; rateRemovePhoto = true; $("rate-photo").value = ""; showRatePhoto(null); };
 const PART_KEYS = PARTS.map(p => p[0]);
-const freshDraft = () => ({ style: null, meats: [], sauces: [], salads: [], meat: 7, sauce: 7, bread: 7, salad: 7, value: 7, on: Object.fromEntries(PART_KEYS.map(k => [k, true])), touched: {} });
+const freshDraft = () => ({ style: null, meats: [], sauces: [], salads: [], meat: 7, sauce: 7, bread: 7, salad: 7, value: 7, taste: 7, on: Object.fromEntries(PART_KEYS.map(k => [k, true])), touched: {} });
 const draft = freshDraft();
 // No bread or wrap with these, so switch that part off unless the person has set it themselves
 const NO_BREAD = new Set(["chips", "rice", "plate", "snack_pack"]);
@@ -390,10 +392,10 @@ function renderPills() {
 }
 function renderScores() {
   $("scores").innerHTML = `<p class="fine sc-help">Switch off anything you didn't have. It won't count towards your score.</p>` + PARTS.map(([k, label, hint]) => {
-    const on = draft.on[k];
+    const on = draft.on[k], must = MUST.has(k);
     return `
-    <div class="sc${on ? "" : " off"}" id="sc-${k}">
-      <label class="sw"><input type="checkbox" data-on="${k}" ${on ? "checked" : ""} aria-label="Rate the ${label.toLowerCase()}"><i></i></label>
+    <div class="sc${on ? "" : " off"}${must ? " must" : ""}" id="sc-${k}">
+      ${must ? `<span class="sw-spacer" aria-hidden="true">★</span>` : `<label class="sw"><input type="checkbox" data-on="${k}" ${on ? "checked" : ""} aria-label="Rate the ${label.toLowerCase()}"><i></i></label>`}
       <span class="lab">${label}<small>${on ? hint : "Didn't have it, not rated"}</small></span>
       <span class="val"${on ? "" : " hidden"}><button type="button" class="step" data-k="${k}" data-d="-0.1" aria-label="${label} down 0.1">−</button><output id="o-${k}">${fmt1(draft[k])}</output><button type="button" class="step" data-k="${k}" data-d="0.1" aria-label="${label} up 0.1">+</button></span>
       <input type="range" id="s-${k}" data-k="${k}" min="0.1" max="10" step="0.1" value="${draft[k]}" aria-label="${label} score"${on ? "" : " hidden"}>
@@ -408,6 +410,7 @@ function updateOverall() {
   $("rate-save").disabled = !on.length;
 }
 function setPartOn(k, on, byUser) {
+  if (MUST.has(k)) on = true;
   draft.on[k] = on;
   if (byUser) draft.touched[k] = true;
   renderScores();
@@ -424,7 +427,7 @@ function openRate(s) {
   Object.assign(draft, mine
     ? { style: mine.style, meats: [...(mine.meats || [])], sauces: [...(mine.sauces || [])], salads: [...(mine.salads || [])],
         ...Object.fromEntries(PART_KEYS.map(k => [k, mine[k] == null ? 7 : num(mine[k])])),
-        on: Object.fromEntries(PART_KEYS.map(k => [k, mine[k] != null])), touched: Object.fromEntries(PART_KEYS.map(k => [k, true])) }
+        on: Object.fromEntries(PART_KEYS.map(k => [k, MUST.has(k) || mine[k] != null])), touched: Object.fromEntries(PART_KEYS.map(k => [k, true])) }
     : freshDraft());
   $("rate-title").textContent = mine ? "Edit your rating" : "Rate this kebab";
   $("rate-where").textContent = `${s.name} · ${s.town}`;
@@ -478,10 +481,13 @@ $("rate-form").addEventListener("submit", async ev => {
     }
     fields.photo_url = sb.storage.from("kebab-photos").getPublicUrl(path).data.publicUrl;
   } else if (rateRemovePhoto) fields.photo_url = null;
-  const q = existing
-    ? sb.from("ratings").update(fields).eq("shop_id", s.id).eq("user_id", session.user.id).select().single()
-    : sb.from("ratings").insert({ ...fields, shop_id: s.id, user_id: session.user.id }).select().single();
-  const { data, error } = await q;
+  const send = f => existing
+    ? sb.from("ratings").update(f).eq("shop_id", s.id).eq("user_id", session.user.id).select().single()
+    : sb.from("ratings").insert({ ...f, shop_id: s.id, user_id: session.user.id }).select().single();
+  let { data, error } = await send(fields);
+  // If the database doesn't have a newer part yet, save the rest rather than failing
+  const missing = error && (error.message || "").match(/'(\w+)' column/);
+  if (missing && missing[1] in fields) { const f = { ...fields }; delete f[missing[1]]; ({ data, error } = await send(f)); }
   if (error) {
     console.error(error);
     $("rate-msg").textContent = "Couldn't save your rating. Check your connection and try again.";
@@ -805,7 +811,7 @@ async function loadMonaco() {
 async function loadStats() {
   const { data } = await sb.from("shop_stats").select("*");
   STATS = {};
-  (data || []).forEach(r => STATS[r.shop_id] = { avg: num(r.avg_score), n: r.rating_count, meat: num(r.avg_meat), sauce: num(r.avg_sauce), bread: num(r.avg_bread), salad: num(r.avg_salad), value: num(r.avg_value) });
+  (data || []).forEach(r => STATS[r.shop_id] = { avg: num(r.avg_score), n: r.rating_count, meat: num(r.avg_meat), sauce: num(r.avg_sauce), bread: num(r.avg_bread), salad: num(r.avg_salad), value: num(r.avg_value), taste: num(r.avg_taste) });
 }
 async function loadMine() {
   MINE = {}; profile = null; shopsIStaff = []; TRIED = [];
